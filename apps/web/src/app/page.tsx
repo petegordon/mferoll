@@ -18,7 +18,14 @@ const DiceScene = dynamic(() => import('@/components/dice/DiceScene'), {
   ),
 });
 
-const ROLL_COOLDOWN_MS = 10000; // 10 second cooldown between rolls
+const ROLL_COOLDOWN_MS = 8000; // 8 second cooldown between rolls
+
+// Check if iOS requires motion permission (iOS 13+)
+function needsMotionPermission(): boolean {
+  if (typeof window === 'undefined') return false;
+  // @ts-ignore
+  return typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function';
+}
 
 export default function Home() {
   const { isConnected } = useAccount();
@@ -27,6 +34,7 @@ export default function Home() {
   const [diceResult, setDiceResult] = useState<{ die1: number; die2: number } | null>(null);
   const [targetFaces, setTargetFaces] = useState<{ die1: number; die2: number } | null>(null);
   const [hasStarted, setHasStarted] = useState(false);
+  const [needsPermission, setNeedsPermission] = useState<boolean | null>(null); // null = checking
   const [canRoll, setCanRoll] = useState(true);
   const [shakeEnabled, setShakeEnabled] = useState(false);
   const [rollCount, setRollCount] = useState(0);
@@ -41,25 +49,28 @@ export default function Home() {
     setCanRoll(false);
   }, []);
 
-  // Called when TouchToStart completes - triggers first roll
+  // Check on mount if we need to show TouchToStart (iOS only)
+  useEffect(() => {
+    const needs = needsMotionPermission();
+    setNeedsPermission(needs);
+
+    // If no permission needed, auto-start with motion enabled
+    if (!needs && !hasStarted) {
+      // Small delay to let the scene load
+      const timer = setTimeout(() => {
+        handleStart(true);
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Called when TouchToStart completes (or auto-start on non-iOS)
   const handleStart = useCallback((motionGranted: boolean) => {
     console.log('Started with motion granted:', motionGranted);
     setShakeEnabled(motionGranted);
     setHasStarted(true);
-
-    // Generate target faces first
-    const die1 = Math.floor(Math.random() * 6) + 1;
-    const die2 = Math.floor(Math.random() * 6) + 1;
-    console.log('Target faces:', die1, die2);
-
-    // Trigger first roll
-    isRollingRef.current = true;
-    setRollCount(1);
-    setTargetFaces({ die1, die2 });
-    setIsRolling(true);
-    setDiceResult(null);
-    startCooldown(); // Start 10s cooldown now
-  }, [startCooldown]);
+    // Don't auto-roll - wait for user to tap/shake
+  }, []);
 
   // Handle roll - only when canRoll is true
   const handleRoll = useCallback(() => {
@@ -128,8 +139,8 @@ export default function Home() {
 
   return (
     <main className="h-[100dvh] flex flex-col bg-slate-900 overflow-hidden">
-      {/* Touch to Start overlay */}
-      {!hasStarted && <TouchToStart onStart={handleStart} />}
+      {/* Touch to Start overlay - only for iOS that needs motion permission */}
+      {!hasStarted && needsPermission === true && <TouchToStart onStart={handleStart} />}
 
       {/* Minimal header */}
       <header className="flex-shrink-0 flex justify-between items-center p-4 bg-black/30 safe-top">
@@ -169,6 +180,18 @@ export default function Home() {
           onDiceSettled={handleDiceSettled}
         />
 
+        {/* Initial roll button - before first roll */}
+        {hasStarted && !diceResult && !isRolling && (
+          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex flex-col items-center gap-3 safe-bottom pb-2">
+            <button
+              onClick={handleThrowAgain}
+              className="bg-white/20 hover:bg-white/30 text-white font-medium px-6 py-3 rounded-xl transition-colors"
+            >
+              {shakeEnabled ? 'Shake or Tap to Roll' : 'Tap to Roll'}
+            </button>
+          </div>
+        )}
+
         {/* Result display and Throw Again button */}
         {diceResult && !isRolling && (
           <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex flex-col items-center gap-3 safe-bottom pb-2">
@@ -185,7 +208,7 @@ export default function Home() {
                 onClick={handleThrowAgain}
                 className="bg-white/20 hover:bg-white/30 text-white font-medium px-5 py-2.5 rounded-xl transition-colors text-sm"
               >
-                {shakeEnabled ? 'Shake or Tap to Throw Again' : 'Throw Again'}
+                {shakeEnabled ? 'Shake or Tap to Roll' : 'Tap to Roll'}
               </button>
             ) : (
               <div className="text-white/50 text-sm">
@@ -202,24 +225,41 @@ export default function Home() {
 // Custom hook for shake detection - uses a lock to prevent multiple triggers
 function useShakeListener(enabled: boolean, onShake: () => void, isRolling: boolean) {
   const lockedUntilRef = useRef(0);
-  const lastAccRef = useRef({ x: 0, y: 0, z: 0 });
+  const lastAccRef = useRef<{ x: number; y: number; z: number } | null>(null);
   const onShakeRef = useRef(onShake);
+  const enabledAtRef = useRef(0);
 
   useEffect(() => {
     onShakeRef.current = onShake;
   }, [onShake]);
 
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled) {
+      // Reset when disabled so we don't get false triggers on re-enable
+      lastAccRef.current = null;
+      return;
+    }
+
+    // Track when we were enabled to ignore events for a short warmup period
+    enabledAtRef.current = Date.now();
 
     const handleMotion = (event: DeviceMotionEvent) => {
       const now = Date.now();
+
+      // Ignore events for 500ms after enabling (warmup period)
+      if (now - enabledAtRef.current < 500) return;
 
       // Hard lock - ignore everything for 3 seconds after a shake
       if (now < lockedUntilRef.current) return;
 
       const acc = event.accelerationIncludingGravity;
       if (!acc || acc.x === null || acc.y === null || acc.z === null) return;
+
+      // First event after enable - just capture baseline, don't detect
+      if (lastAccRef.current === null) {
+        lastAccRef.current = { x: acc.x, y: acc.y, z: acc.z };
+        return;
+      }
 
       const deltaX = Math.abs(acc.x - lastAccRef.current.x);
       const deltaY = Math.abs(acc.y - lastAccRef.current.y);
