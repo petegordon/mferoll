@@ -85,22 +85,33 @@ export function SevenElevenGame({
   return (
     <div className="w-full max-w-md mx-auto px-4">
       {/* Token selector */}
-      <div className="flex items-center justify-center gap-2 mb-4">
+      <div className="flex items-center justify-center gap-2 mb-4 flex-wrap">
         {SUPPORTED_TOKENS.map((token) => (
           <button
             key={token.symbol}
             onClick={() => setSelectedToken(token)}
-            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+            title={token.symbol}
+            className={`p-2 rounded-lg transition-colors ${
               selectedToken.symbol === token.symbol
                 ? darkMode
-                  ? 'bg-green-600 text-white'
-                  : 'bg-green-500 text-white'
+                  ? 'bg-green-600 ring-2 ring-green-400'
+                  : 'bg-green-500 ring-2 ring-green-300'
                 : darkMode
-                ? 'bg-gray-600 text-gray-300 hover:bg-gray-500'
-                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                ? 'bg-gray-600 hover:bg-gray-500'
+                : 'bg-gray-200 hover:bg-gray-300'
             }`}
           >
-            {token.symbol}
+            <img
+              src={token.icon}
+              alt={token.symbol}
+              className="w-7 h-7 rounded-full"
+              onError={(e) => {
+                // Fallback to text if image fails to load
+                const target = e.target as HTMLImageElement;
+                target.style.display = 'none';
+                target.parentElement!.innerHTML = `<span class="text-sm font-medium ${darkMode ? 'text-white' : 'text-gray-700'}">${token.symbol}</span>`;
+              }}
+            />
           </button>
         ))}
       </div>
@@ -115,16 +126,18 @@ export function SevenElevenGame({
           <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
             Game Balance
           </span>
-          <span className={`font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-            {Number(balanceFormatted).toFixed(2)} {selectedToken.symbol}
+          <span className={`font-bold flex items-center gap-1.5 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+            {Number(balanceFormatted).toFixed(2)}
+            <img src={selectedToken.icon} alt={selectedToken.symbol} className="w-5 h-5 rounded-full" />
           </span>
         </div>
         <div className="flex justify-between items-center mb-3">
           <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
             Bet per roll
           </span>
-          <span className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-            ${SEVEN_ELEVEN_CONSTANTS.BET_USD} ({Number(betAmountFormatted).toFixed(4)} {selectedToken.symbol})
+          <span className={`text-sm flex items-center gap-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+            ${SEVEN_ELEVEN_CONSTANTS.BET_USD} ({Number(betAmountFormatted).toFixed(4)}
+            <img src={selectedToken.icon} alt={selectedToken.symbol} className="w-4 h-4 rounded-full" />)
           </span>
         </div>
         <div className="flex gap-2">
@@ -216,11 +229,12 @@ export function SevenElevenGame({
             }`}
           >
             <h3
-              className={`text-lg font-bold mb-4 ${
+              className={`text-lg font-bold mb-4 flex items-center gap-2 ${
                 darkMode ? 'text-white' : 'text-gray-900'
               }`}
             >
-              Deposit {selectedToken.symbol}
+              Deposit
+              <img src={selectedToken.icon} alt={selectedToken.symbol} className="w-6 h-6 rounded-full" />
             </h3>
 
             <div className="mb-4">
@@ -256,11 +270,12 @@ export function SevenElevenGame({
                 </button>
               </div>
               <div
-                className={`text-xs mt-1 ${
+                className={`text-xs mt-1 flex items-center gap-1 ${
                   darkMode ? 'text-gray-500' : 'text-gray-400'
                 }`}
               >
-                Wallet: {Number(walletBalanceFormatted).toFixed(2)} {selectedToken.symbol}
+                Wallet: {Number(walletBalanceFormatted).toFixed(2)}
+                <img src={selectedToken.icon} alt={selectedToken.symbol} className="w-3.5 h-3.5 rounded-full" />
               </div>
             </div>
 

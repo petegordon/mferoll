@@ -380,7 +380,14 @@ export const TOKEN_ADDRESSES = {
   MFERCOIN: '0xE3086852A4B125803C815a158249ae468A3254Ca' as `0x${string}`,
   DRB: '0x3ec2156D4c0A9CBdAB4a016633b7BcF6a8d68Ea2' as `0x${string}`,
   BANKR: '0x22aF33FE49fD1Fa80c7149773dDe5890D3c76F3b' as `0x${string}`,
+  USDC: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as `0x${string}`,
+  WETH: '0x4200000000000000000000000000000000000006' as `0x${string}`,
 } as const;
+
+// Helper to get token icon URL from Trust Wallet assets
+export function getTokenIconUrl(address: string): string {
+  return `https://assets-cdn.trustwallet.com/blockchains/base/assets/${address}/logo.png`;
+}
 
 // SevenEleven contract address (to be updated after deployment)
 export const SEVEN_ELEVEN_ADDRESS = '0x0000000000000000000000000000000000000000' as `0x${string}`;

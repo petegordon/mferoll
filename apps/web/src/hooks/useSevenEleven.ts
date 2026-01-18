@@ -15,14 +15,47 @@ import {
   ERC20_ABI,
   TOKEN_ADDRESSES,
   SEVEN_ELEVEN_CONSTANTS,
+  getTokenIconUrl,
   type PlayerStats,
 } from '@/lib/contracts';
 
 // Supported tokens for the 7/11 game
 export const SUPPORTED_TOKENS = [
-  { address: TOKEN_ADDRESSES.MFERCOIN, symbol: 'MFER', name: 'mfercoin', decimals: 18 },
-  { address: TOKEN_ADDRESSES.DRB, symbol: 'DRB', name: 'drb', decimals: 18 },
-  { address: TOKEN_ADDRESSES.BANKR, symbol: 'BANKR', name: 'bankr', decimals: 18 },
+  {
+    address: TOKEN_ADDRESSES.MFERCOIN,
+    symbol: 'MFER',
+    name: 'mfercoin',
+    decimals: 18,
+    icon: getTokenIconUrl(TOKEN_ADDRESSES.MFERCOIN),
+  },
+  {
+    address: TOKEN_ADDRESSES.DRB,
+    symbol: 'DRB',
+    name: 'drb',
+    decimals: 18,
+    icon: getTokenIconUrl(TOKEN_ADDRESSES.DRB),
+  },
+  {
+    address: TOKEN_ADDRESSES.BANKR,
+    symbol: 'BANKR',
+    name: 'bankr',
+    decimals: 18,
+    icon: getTokenIconUrl(TOKEN_ADDRESSES.BANKR),
+  },
+  {
+    address: TOKEN_ADDRESSES.USDC,
+    symbol: 'USDC',
+    name: 'USD Coin',
+    decimals: 6,
+    icon: getTokenIconUrl(TOKEN_ADDRESSES.USDC),
+  },
+  {
+    address: TOKEN_ADDRESSES.WETH,
+    symbol: 'WETH',
+    name: 'Wrapped Ether',
+    decimals: 18,
+    icon: getTokenIconUrl(TOKEN_ADDRESSES.WETH),
+  },
 ] as const;
 
 export type SupportedToken = (typeof SUPPORTED_TOKENS)[number];
