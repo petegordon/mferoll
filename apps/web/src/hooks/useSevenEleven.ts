@@ -20,20 +20,21 @@ import {
 } from '@/lib/contracts';
 
 // Supported tokens for the 7/11 game
+// Using CoinGecko URLs for MFER/DRB (same as Uniswap), Trust Wallet for standard tokens
 export const SUPPORTED_TOKENS = [
   {
     address: TOKEN_ADDRESSES.MFERCOIN,
     symbol: 'MFER',
     name: 'mfercoin',
     decimals: 18,
-    icon: getTokenIconUrl(TOKEN_ADDRESSES.MFERCOIN),
+    icon: 'https://coin-images.coingecko.com/coins/images/36550/small/mfercoin-logo.png',
   },
   {
     address: TOKEN_ADDRESSES.DRB,
     symbol: 'DRB',
     name: 'drb',
     decimals: 18,
-    icon: getTokenIconUrl(TOKEN_ADDRESSES.DRB),
+    icon: 'https://coin-images.coingecko.com/coins/images/54784/small/1000143570.jpg',
   },
   {
     address: TOKEN_ADDRESSES.BANKR,
