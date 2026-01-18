@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from 'react';
 import { useAccount } from 'wagmi';
-import { formatUnits, parseUnits } from 'viem';
+import { formatUnits } from 'viem';
 import {
   useSevenEleven,
   SUPPORTED_TOKENS,
@@ -12,23 +12,13 @@ import {
 import { SEVEN_ELEVEN_CONSTANTS } from '@/lib/contracts';
 
 interface SevenElevenGameProps {
-  diceResult: { die1: number; die2: number } | null;
   darkMode: boolean;
-  onRoll: () => void;
-  isRolling: boolean;
-  canRoll: boolean;
-  cooldownRemaining: number;
 }
 
 export function SevenElevenGame({
-  diceResult,
   darkMode,
-  onRoll,
-  isRolling,
-  canRoll,
-  cooldownRemaining,
 }: SevenElevenGameProps) {
-  const { isConnected, address } = useAccount();
+  const { isConnected } = useAccount();
   const [selectedToken, setSelectedToken] = useState<SupportedToken>(SUPPORTED_TOKENS[0]);
   const [showDepositModal, setShowDepositModal] = useState(false);
   const [depositAmount, setDepositAmount] = useState('');
@@ -40,28 +30,18 @@ export function SevenElevenGame({
     walletBalance,
     walletBalanceFormatted,
     playerStats,
-    betAmount,
     betAmountFormatted,
-    minDeposit,
     minDepositFormatted,
     allowance,
     needsApproval,
     approve,
     deposit,
     withdraw,
-    roll,
     isApproving,
     isDepositing,
     isWithdrawing,
-    isRolling: isContractRolling,
-    isPending,
     error,
   } = useSevenEleven(selectedToken);
-
-  // Calculate if win (7 or 11)
-  const isWin = diceResult
-    ? diceResult.die1 + diceResult.die2 === 7 || diceResult.die1 + diceResult.die2 === 11
-    : null;
 
   // Handle deposit
   const handleDeposit = useCallback(async () => {
@@ -84,18 +64,6 @@ export function SevenElevenGame({
       await withdraw(balance);
     }
   }, [balance, withdraw]);
-
-  // Handle roll with contract integration
-  const handleContractRoll = useCallback(async () => {
-    if (!canRoll || isContractRolling) return;
-
-    // For now, just trigger the visual roll
-    // TODO: Connect to contract roll when deployed
-    onRoll();
-
-    // When contract is deployed, uncomment:
-    // await roll();
-  }, [canRoll, isContractRolling, onRoll]);
 
   // Calculate win rate
   const winRate =
@@ -182,90 +150,6 @@ export function SevenElevenGame({
             {isWithdrawing ? 'Withdrawing...' : 'Withdraw All'}
           </button>
         </div>
-      </div>
-
-      {/* Result display */}
-      {diceResult && !isRolling && (
-        <div
-          className={`rounded-xl p-4 mb-4 text-center ${
-            isWin
-              ? darkMode
-                ? 'bg-green-800/80'
-                : 'bg-green-100'
-              : darkMode
-              ? 'bg-red-800/80'
-              : 'bg-red-100'
-          }`}
-        >
-          <div
-            className={`text-4xl font-bold mb-1 ${
-              isWin
-                ? darkMode
-                  ? 'text-green-300'
-                  : 'text-green-600'
-                : darkMode
-                ? 'text-red-300'
-                : 'text-red-600'
-            }`}
-          >
-            {diceResult.die1 + diceResult.die2}
-          </div>
-          <div
-            className={`text-sm mb-2 ${
-              darkMode ? 'text-gray-300' : 'text-gray-600'
-            }`}
-          >
-            {diceResult.die1} + {diceResult.die2}
-          </div>
-          <div
-            className={`text-lg font-bold ${
-              isWin
-                ? darkMode
-                  ? 'text-green-300'
-                  : 'text-green-600'
-                : darkMode
-                ? 'text-red-300'
-                : 'text-red-600'
-            }`}
-          >
-            {isWin ? `WIN! 3x Payout` : 'Better luck next time'}
-          </div>
-        </div>
-      )}
-
-      {/* Roll button */}
-      <div className="text-center mb-4">
-        {canRoll ? (
-          <button
-            onClick={handleContractRoll}
-            disabled={
-              isRolling ||
-              isContractRolling ||
-              !balance ||
-              (betAmount !== undefined && balance < betAmount)
-            }
-            className={`px-8 py-3 rounded-xl font-bold text-lg transition-colors disabled:opacity-50 ${
-              darkMode
-                ? 'bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white'
-                : 'bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-400 hover:to-pink-400 text-white'
-            }`}
-          >
-            Roll for 7 or 11
-          </button>
-        ) : (
-          <div
-            className={`px-8 py-3 rounded-xl font-medium ${
-              darkMode ? 'bg-gray-600 text-gray-300' : 'bg-gray-300 text-gray-500'
-            }`}
-          >
-            Wait {Math.ceil(cooldownRemaining / 1000)}s...
-          </div>
-        )}
-        {balance !== undefined && betAmount !== undefined && balance < betAmount && (
-          <p className={`text-sm mt-2 ${darkMode ? 'text-red-400' : 'text-red-500'}`}>
-            Insufficient balance. Deposit more to play.
-          </p>
-        )}
       </div>
 
       {/* Stats toggle */}

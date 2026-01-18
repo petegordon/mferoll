@@ -29,6 +29,7 @@ function needsMotionPermission(): boolean {
 export default function Home() {
   const { isConnected } = useAccount();
   const [darkMode, setDarkMode] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [isRolling, setIsRolling] = useState(false);
   const [diceResult, setDiceResult] = useState<{ die1: number; die2: number } | null>(null);
   const [targetFaces, setTargetFaces] = useState<{ die1: number; die2: number } | null>(null);
@@ -200,6 +201,24 @@ export default function Home() {
             </svg>
           )}
         </button>
+        {/* Menu button - only show when connected */}
+        {isConnected && (
+          <button
+            onClick={() => setMenuOpen(!menuOpen)}
+            className={`p-2 rounded-lg transition-colors shadow-lg ${
+              darkMode
+                ? 'bg-gray-500 hover:bg-gray-400 text-white'
+                : 'bg-gray-600 hover:bg-gray-500 text-white'
+            }`}
+            aria-label="Open game menu"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+              <circle cx="12" cy="5" r="2"/>
+              <circle cx="12" cy="12" r="2"/>
+              <circle cx="12" cy="19" r="2"/>
+            </svg>
+          </button>
+        )}
       </header>
 
       {/* Full screen dice view */}
@@ -231,14 +250,11 @@ export default function Home() {
         {/* Result display and Throw Again button (when not connected) */}
         {diceResult && !isRolling && !isConnected && (
           <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex flex-col items-center gap-3 safe-bottom pb-2">
-            <div className={`rounded-xl px-6 py-3 text-center shadow-lg ${
+            <div className={`rounded-xl px-6 py-3 text-center shadow-lg min-w-[120px] ${
               darkMode ? 'bg-gray-500' : 'bg-gray-600'
             }`}>
               <div className="text-3xl font-bold text-white">
                 {diceResult.die1 + diceResult.die2}
-              </div>
-              <div className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-400'}`}>
-                {diceResult.die1} + {diceResult.die2}
               </div>
             </div>
             {canRoll ? (
@@ -262,17 +278,86 @@ export default function Home() {
           </div>
         )}
 
-        {/* 7/11 Game UI (when connected) */}
+        {/* Simple roll button and result (when connected) */}
         {hasStarted && isConnected && (
-          <div className="absolute bottom-0 left-0 right-0 safe-bottom pb-4">
-            <SevenElevenGame
-              diceResult={diceResult}
-              darkMode={darkMode}
-              onRoll={handleThrowAgain}
-              isRolling={isRolling}
-              canRoll={canRoll}
-              cooldownRemaining={cooldownRemaining}
-            />
+          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex flex-col items-center gap-3 safe-bottom pb-2">
+            {/* Result display */}
+            {diceResult && !isRolling && (
+              <div className={`rounded-xl px-6 py-3 text-center shadow-lg min-w-[120px] ${
+                (diceResult.die1 + diceResult.die2 === 7 || diceResult.die1 + diceResult.die2 === 11)
+                  ? darkMode ? 'bg-green-700' : 'bg-green-500'
+                  : darkMode ? 'bg-red-700' : 'bg-red-500'
+              }`}>
+                <div className="text-3xl font-bold text-white">
+                  {diceResult.die1 + diceResult.die2}
+                </div>
+                <div className="text-sm font-bold text-white mt-1">
+                  {(diceResult.die1 + diceResult.die2 === 7 || diceResult.die1 + diceResult.die2 === 11)
+                    ? 'WIN!'
+                    : 'Try Again'}
+                </div>
+              </div>
+            )}
+            {/* Roll button */}
+            {canRoll ? (
+              <button
+                onClick={handleThrowAgain}
+                disabled={isRolling}
+                className={`font-medium px-6 py-3 rounded-xl transition-colors shadow-lg disabled:opacity-50 ${
+                  darkMode
+                    ? 'bg-gray-500 hover:bg-gray-400 text-white'
+                    : 'bg-gray-600 hover:bg-gray-500 text-white'
+                }`}
+              >
+                {shakeEnabled ? 'Shake or Tap to Roll' : 'Tap to Roll'}
+              </button>
+            ) : (
+              <div className={`font-medium px-5 py-2.5 rounded-xl text-sm shadow-lg ${
+                darkMode ? 'bg-gray-500 text-white' : 'bg-gray-600 text-white'
+              }`}>
+                Wait {Math.ceil(cooldownRemaining / 1000)}s...
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Game Menu Overlay */}
+        {menuOpen && isConnected && (
+          <div
+            className="absolute inset-0 z-30 flex items-center justify-center"
+            onClick={() => setMenuOpen(false)}
+          >
+            {/* Backdrop */}
+            <div className={`absolute inset-0 ${darkMode ? 'bg-black/70' : 'bg-black/50'}`} />
+            {/* Menu content */}
+            <div
+              className={`relative w-full max-w-md mx-4 rounded-2xl shadow-2xl overflow-hidden ${
+                darkMode ? 'bg-gray-800' : 'bg-white'
+              }`}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Close button */}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setMenuOpen(false);
+                }}
+                className={`absolute top-3 right-3 z-10 p-2 rounded-lg transition-colors ${
+                  darkMode
+                    ? 'hover:bg-gray-700 text-gray-400'
+                    : 'hover:bg-gray-100 text-gray-500'
+                }`}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18"/>
+                  <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
+              {/* Game UI */}
+              <div className="p-4 pt-12 max-h-[80vh] overflow-y-auto">
+                <SevenElevenGame darkMode={darkMode} />
+              </div>
+            </div>
           </div>
         )}
       </div>
