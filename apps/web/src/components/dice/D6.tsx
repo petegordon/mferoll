@@ -1,0 +1,289 @@
+'use client';
+
+import { useRef, useMemo, useEffect, useState } from 'react';
+import { useFrame } from '@react-three/fiber';
+import * as THREE from 'three';
+
+interface D6Props {
+  position: [number, number, number];
+  targetFace?: number;
+  onSettled?: () => void;
+  isRolling: boolean;
+}
+
+// Create pip texture for dice face
+function createPipTexture(pips: number): THREE.CanvasTexture {
+  const size = 256;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, size, size);
+
+  ctx.fillStyle = '#1a1a1a';
+  const pipRadius = size * 0.08;
+  const margin = size * 0.22;
+  const center = size / 2;
+
+  const pipPositions: Record<number, [number, number][]> = {
+    1: [[center, center]],
+    2: [[margin, margin], [size - margin, size - margin]],
+    3: [[margin, margin], [center, center], [size - margin, size - margin]],
+    4: [[margin, margin], [size - margin, margin], [margin, size - margin], [size - margin, size - margin]],
+    5: [[margin, margin], [size - margin, margin], [center, center], [margin, size - margin], [size - margin, size - margin]],
+    6: [[margin, margin], [size - margin, margin], [margin, center], [size - margin, center], [margin, size - margin], [size - margin, size - margin]],
+  };
+
+  const positions = pipPositions[pips] || [];
+  positions.forEach(([x, y]) => {
+    ctx.beginPath();
+    ctx.arc(x, y, pipRadius, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.needsUpdate = true;
+  return texture;
+}
+
+export function D6({ position, targetFace = 1, onSettled, isRolling }: D6Props) {
+  const meshRef = useRef<THREE.Mesh>(null);
+  const [isAnimating, setIsAnimating] = useState(false);
+  const isAnimatingRef = useRef(false); // Synchronous guard
+  const animationTimeRef = useRef(0);
+  const hasSettledRef = useRef(false);
+  const startQuatRef = useRef(new THREE.Quaternion());
+  const targetQuatRef = useRef(new THREE.Quaternion());
+
+  // Create materials for each face
+  // BoxGeometry face order: +X, -X, +Y, -Y, +Z, -Z (indices 0-5)
+  // Standard die: opposite faces sum to 7 (1-6, 2-5, 3-4)
+  // We'll put: +X=2, -X=5, +Y=3, -Y=4, +Z=1, -Z=6
+  const materials = useMemo(() => {
+    const faceOrder = [2, 5, 3, 4, 1, 6];
+    return faceOrder.map((pips) => {
+      const texture = createPipTexture(pips);
+      return new THREE.MeshStandardMaterial({
+        map: texture,
+        roughness: 0.3,
+        metalness: 0.1,
+      });
+    });
+  }, []);
+
+  // Calculate rotation to show target face on top
+  // With our face mapping: +X=2, -X=5, +Y=3, -Y=4, +Z=1, -Z=6
+  const getTargetQuaternion = (face: number): THREE.Quaternion => {
+    const euler = (() => {
+      switch (face) {
+        case 1: return new THREE.Euler(-Math.PI / 2, 0, 0); // +Z up
+        case 2: return new THREE.Euler(0, 0, Math.PI / 2);  // +X up
+        case 3: return new THREE.Euler(0, 0, 0);            // +Y up (default)
+        case 4: return new THREE.Euler(Math.PI, 0, 0);      // -Y up
+        case 5: return new THREE.Euler(0, 0, -Math.PI / 2); // -X up
+        case 6: return new THREE.Euler(Math.PI / 2, 0, 0);  // -Z up
+        default: return new THREE.Euler(0, 0, 0);
+      }
+    })();
+    return new THREE.Quaternion().setFromEuler(euler);
+  };
+
+  // Random speeds for this dice (set once per roll)
+  const spinSpeedsRef = useRef({ x: 0, y: 0, z: 0 });
+  const throwStartRotRef = useRef({ x: 0, y: 0, z: 0 });
+  const throwEndRotRef = useRef({ x: 0, y: 0, z: 0 });
+  const hasStartedThrowRef = useRef(false);
+  // Settling phase refs
+  const hasStartedSettlingRef = useRef(false);
+  const settleStartPosRef = useRef({ x: 0, y: 0, z: 0 });
+  const settleStartQuatRef = useRef(new THREE.Quaternion());
+
+  // Start animation when isRolling becomes true
+  useEffect(() => {
+    // Use ref for synchronous guard to prevent double-firing
+    if (isRolling && !isAnimatingRef.current) {
+      console.log('D6: Starting animation for face', targetFace);
+      isAnimatingRef.current = true; // Set immediately (sync)
+      setIsAnimating(true);
+      hasSettledRef.current = false;
+      hasStartedThrowRef.current = false;
+      hasStartedSettlingRef.current = false;
+      animationTimeRef.current = 0;
+
+      // Random spin speeds (different for each axis, like real dice)
+      spinSpeedsRef.current = {
+        x: (Math.random() - 0.5) * 25,
+        y: (Math.random() - 0.5) * 25,
+        z: (Math.random() - 0.5) * 25,
+      };
+
+      targetQuatRef.current = getTargetQuaternion(targetFace);
+    }
+  }, [isRolling, targetFace]);
+
+  // Animate the dice
+  useFrame((_, delta) => {
+    if (!meshRef.current || !isAnimating) return;
+
+    animationTimeRef.current += delta;
+    const shakePhase = 1.2; // Time spent "shaking in hand"
+    const throwPhase = 2.3; // Time for throw and land
+    const settlePhase = 0.3; // Final settling animation
+
+    const time = animationTimeRef.current;
+
+    if (time < shakePhase) {
+      // PHASE 1: Shaking in hand - fast chaotic rotation
+      hasStartedThrowRef.current = false;
+
+      // Rapid tumbling rotation
+      meshRef.current.rotation.x += spinSpeedsRef.current.x * delta;
+      meshRef.current.rotation.y += spinSpeedsRef.current.y * delta;
+      meshRef.current.rotation.z += spinSpeedsRef.current.z * delta;
+
+      // Shake position around like in a cupped hand
+      const shakeIntensity = 0.4;
+      meshRef.current.position.x = position[0] + Math.sin(time * 30) * shakeIntensity * (0.5 + Math.random() * 0.5);
+      meshRef.current.position.y = position[1] + 0.5 + Math.sin(time * 25) * 0.3;
+      meshRef.current.position.z = position[2] + Math.cos(time * 28) * shakeIntensity * (0.5 + Math.random() * 0.5);
+
+    } else if (time < shakePhase + throwPhase) {
+      // PHASE 2: Thrown - arc through air then land
+      const throwTime = time - shakePhase;
+      const throwProgress = Math.min(throwTime / throwPhase, 1);
+
+      // Capture starting rotation at beginning of throw phase
+      if (!hasStartedThrowRef.current) {
+        hasStartedThrowRef.current = true;
+        // Capture current rotation
+        throwStartRotRef.current = {
+          x: meshRef.current.rotation.x,
+          y: meshRef.current.rotation.y,
+          z: meshRef.current.rotation.z,
+        };
+        // Calculate target rotation with extra tumbling rotations
+        const targetEuler = new THREE.Euler().setFromQuaternion(targetQuatRef.current);
+        const extraSpins = 2 + Math.random(); // 2-3 full rotations
+        throwEndRotRef.current = {
+          x: targetEuler.x + Math.sign(spinSpeedsRef.current.x || 1) * Math.PI * 2 * extraSpins,
+          y: targetEuler.y + Math.sign(spinSpeedsRef.current.y || 1) * Math.PI * 2 * extraSpins,
+          z: targetEuler.z + Math.sign(spinSpeedsRef.current.z || 1) * Math.PI * 2 * extraSpins,
+        };
+      }
+
+      // Ease out for settling
+      const eased = 1 - Math.pow(1 - throwProgress, 3);
+
+      // Landing phase for position (starts at 70% through throw)
+      const landingStart = 0.7;
+      const isLanding = throwProgress > landingStart;
+      const landingProgress = isLanding ? (throwProgress - landingStart) / (1 - landingStart) : 0;
+      const landingEased = landingProgress * landingProgress * (3 - 2 * landingProgress);
+
+      // Interpolate rotation from start to target (with extra spins baked in)
+      const rotX = throwStartRotRef.current.x + (throwEndRotRef.current.x - throwStartRotRef.current.x) * eased;
+      const rotY = throwStartRotRef.current.y + (throwEndRotRef.current.y - throwStartRotRef.current.y) * eased;
+      const rotZ = throwStartRotRef.current.z + (throwEndRotRef.current.z - throwStartRotRef.current.z) * eased;
+      meshRef.current.rotation.set(rotX, rotY, rotZ);
+
+      // Bounce trajectory (only before landing)
+      let height = 0;
+      if (!isLanding) {
+        const bounceHeight = 2.0;
+        const gravity = 2.5;
+        const bounceDecay = 0.35;
+
+        let t = throwProgress / landingStart; // Normalize to pre-landing phase
+        let bounceNum = 0;
+        let velocity = bounceHeight;
+
+        // Simulate bounces
+        while (t > 0 && bounceNum < 3) {
+          const bounceDuration = velocity / gravity;
+          if (t < bounceDuration * 2) {
+            const bounceT = t / (bounceDuration * 2);
+            height = velocity * Math.sin(bounceT * Math.PI);
+            break;
+          }
+          t -= bounceDuration * 2;
+          velocity *= bounceDecay;
+          bounceNum++;
+        }
+      }
+
+      // Position smoothly to final during landing
+      const targetX = position[0];
+      const targetY = position[1];
+      const targetZ = position[2];
+
+      if (isLanding) {
+        // Smooth transition to final position
+        const currentX = meshRef.current.position.x;
+        const currentY = meshRef.current.position.y;
+        const currentZ = meshRef.current.position.z;
+
+        meshRef.current.position.x = currentX + (targetX - currentX) * landingEased;
+        meshRef.current.position.y = currentY + (targetY - currentY) * landingEased;
+        meshRef.current.position.z = currentZ + (targetZ - currentZ) * landingEased;
+      } else {
+        meshRef.current.position.x = position[0] + (1 - eased) * (Math.sin(time * 8) * 0.2);
+        meshRef.current.position.y = position[1] + height;
+        meshRef.current.position.z = position[2] + (1 - eased) * (Math.cos(time * 7) * 0.2);
+      }
+
+    } else {
+      // PHASE 3: Final settling - smooth 300ms transition to exact final position
+      const settleTime = time - shakePhase - throwPhase;
+      const settleProgress = Math.min(settleTime / settlePhase, 1);
+
+      // Capture starting position/rotation at beginning of settle phase
+      if (!hasStartedSettlingRef.current) {
+        hasStartedSettlingRef.current = true;
+        settleStartPosRef.current = {
+          x: meshRef.current.position.x,
+          y: meshRef.current.position.y,
+          z: meshRef.current.position.z,
+        };
+        settleStartQuatRef.current.copy(meshRef.current.quaternion);
+      }
+
+      // Smooth ease out
+      const settleEased = 1 - Math.pow(1 - settleProgress, 2);
+
+      // Interpolate position
+      meshRef.current.position.x = settleStartPosRef.current.x + (position[0] - settleStartPosRef.current.x) * settleEased;
+      meshRef.current.position.y = settleStartPosRef.current.y + (position[1] - settleStartPosRef.current.y) * settleEased;
+      meshRef.current.position.z = settleStartPosRef.current.z + (position[2] - settleStartPosRef.current.z) * settleEased;
+
+      // Slerp rotation to exact target
+      const currentQuat = settleStartQuatRef.current.clone();
+      currentQuat.slerp(targetQuatRef.current, settleEased);
+      meshRef.current.quaternion.copy(currentQuat);
+
+      // Done
+      if (settleProgress >= 1 && !hasSettledRef.current) {
+        hasSettledRef.current = true;
+        isAnimatingRef.current = false; // Reset sync guard
+        setIsAnimating(false);
+        meshRef.current.position.set(position[0], position[1], position[2]);
+        meshRef.current.quaternion.copy(targetQuatRef.current);
+        console.log('D6: Settled on face', targetFace);
+        onSettled?.();
+      }
+    }
+  });
+
+  return (
+    <mesh
+      ref={meshRef}
+      position={position}
+      castShadow
+      receiveShadow
+      material={materials}
+    >
+      <boxGeometry args={[1, 1, 1]} />
+    </mesh>
+  );
+}

@@ -1,0 +1,37 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Bet {
+  id          String   @id @default(uuid())
+  requestId   String   @unique
+  player      String
+  betType     Int
+  prediction  Int
+  amount      String
+  die1        Int?
+  die2        Int?
+  settled     Boolean  @default(false)
+  won         Boolean?
+  payout      String?
+  txHash      String
+  blockNumber Int
+  timestamp   DateTime @default(now())
+  settledAt   DateTime?
+  settleTxHash String?
+
+  @@index([player])
+  @@index([settled])
+  @@index([timestamp])
+}
+
+model IndexerState {
+  id              String @id @default("default")
+  lastBlockNumber Int
+  updatedAt       DateTime @updatedAt
+}
