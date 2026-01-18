@@ -8,9 +8,10 @@ interface DiceSceneProps {
   isRolling: boolean;
   targetFaces: { die1: number; die2: number } | null;
   onDiceSettled: () => void;
+  darkMode?: boolean;
 }
 
-export default function DiceScene({ isRolling, targetFaces, onDiceSettled }: DiceSceneProps) {
+export default function DiceScene({ isRolling, targetFaces, onDiceSettled, darkMode = false }: DiceSceneProps) {
   return (
     <div className="w-full h-full">
       <Canvas shadows camera={{ position: [0, 8, 0], fov: 50, near: 0.1, far: 100 }} gl={{ alpha: true }} style={{ background: 'transparent' }}>
@@ -41,11 +42,12 @@ export default function DiceScene({ isRolling, targetFaces, onDiceSettled }: Dic
         </mesh>
 
         {/* Dice - offset in Z to move down on screen */}
-        <group position={[0, 0, 1.1]}>
+        <group position={[0, 0, 0.9]}>
           <DicePair
             isRolling={isRolling}
             targetFaces={targetFaces}
             onSettled={onDiceSettled}
+            darkMode={darkMode}
           />
         </group>
       </Canvas>

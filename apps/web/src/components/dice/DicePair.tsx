@@ -7,9 +7,10 @@ interface DicePairProps {
   isRolling: boolean;
   targetFaces: { die1: number; die2: number } | null;
   onSettled: () => void;
+  darkMode?: boolean;
 }
 
-export function DicePair({ isRolling, targetFaces, onSettled }: DicePairProps) {
+export function DicePair({ isRolling, targetFaces, onSettled, darkMode = false }: DicePairProps) {
   const die1SettledRef = useRef(false);
   const die2SettledRef = useRef(false);
   const hasCalledSettledRef = useRef(false);
@@ -53,12 +54,14 @@ export function DicePair({ isRolling, targetFaces, onSettled }: DicePairProps) {
         isRolling={isRolling}
         targetFace={targetFaces?.die1}
         onSettled={handleDie1Settled}
+        darkMode={darkMode}
       />
       <D6
         position={[1.0, 0, 0]}
         isRolling={isRolling}
         targetFace={targetFaces?.die2}
         onSettled={handleDie2Settled}
+        darkMode={darkMode}
       />
     </group>
   );

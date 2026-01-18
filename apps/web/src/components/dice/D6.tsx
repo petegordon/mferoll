@@ -9,23 +9,32 @@ interface D6Props {
   targetFace?: number;
   onSettled?: () => void;
   isRolling: boolean;
+  darkMode?: boolean;
 }
 
-// Create pip texture for dice face - red background with white pips
-function createPipTexture(pips: number): THREE.CanvasTexture {
+// Create pip texture for dice face
+function createPipTexture(pips: number, darkMode: boolean = false): THREE.CanvasTexture {
   const size = 256;
   const canvas = document.createElement('canvas');
   canvas.width = size;
   canvas.height = size;
   const ctx = canvas.getContext('2d')!;
 
-  // Deep casino red background
-  ctx.fillStyle = '#520000';
-  ctx.fillRect(0, 0, size, size);
-
-  // White pips
-  ctx.fillStyle = '#ffffff';
-  ctx.shadowColor = '#ffffff';
+  if (darkMode) {
+    // Black background for dark mode
+    ctx.fillStyle = '#0a0a0a';
+    ctx.fillRect(0, 0, size, size);
+    // Dark gray pips
+    ctx.fillStyle = '#6b7280';
+    ctx.shadowColor = '#6b7280';
+  } else {
+    // Deep casino red background
+    ctx.fillStyle = '#520000';
+    ctx.fillRect(0, 0, size, size);
+    // White pips
+    ctx.fillStyle = '#ffffff';
+    ctx.shadowColor = '#ffffff';
+  }
   ctx.shadowBlur = 6;
   const pipRadius = size * 0.09;
   const margin = size * 0.23;
@@ -52,7 +61,7 @@ function createPipTexture(pips: number): THREE.CanvasTexture {
   return texture;
 }
 
-export function D6({ position, targetFace = 1, onSettled, isRolling }: D6Props) {
+export function D6({ position, targetFace = 1, onSettled, isRolling, darkMode = false }: D6Props) {
   const meshRef = useRef<THREE.Mesh>(null);
   const [isAnimating, setIsAnimating] = useState(false);
   const isAnimatingRef = useRef(false); // Synchronous guard
@@ -61,32 +70,42 @@ export function D6({ position, targetFace = 1, onSettled, isRolling }: D6Props) 
   const startQuatRef = useRef(new THREE.Quaternion());
   const targetQuatRef = useRef(new THREE.Quaternion());
 
-  // Create materials for each face - shiny glassy red
+  // Create materials for each face - shiny glassy
   // BoxGeometry face order: +X, -X, +Y, -Y, +Z, -Z (indices 0-5)
   // Standard die: opposite faces sum to 7 (1-6, 2-5, 3-4)
   // We'll put: +X=2, -X=5, +Y=3, -Y=4, +Z=1, -Z=6
   const materials = useMemo(() => {
     const faceOrder = [2, 5, 3, 4, 1, 6];
     return faceOrder.map((pips) => {
-      const texture = createPipTexture(pips);
-      return new THREE.MeshPhysicalMaterial({
-        map: texture,
-        roughness: 0.02,
-        metalness: 0,
-        clearcoat: 1.0,
-        clearcoatRoughness: 0.02,
-        reflectivity: 1.0,
-        transmission: 0.12,
-        thickness: 1.0,
-        ior: 1.52,
-        transparent: true,
-        attenuationColor: new THREE.Color('#350000'),
-        attenuationDistance: 0.8,
-        envMapIntensity: 1.5,
-        specularIntensity: 1.0,
-      });
+      const texture = createPipTexture(pips, darkMode);
+      if (darkMode) {
+        // Solid matte dark material for dark mode
+        return new THREE.MeshStandardMaterial({
+          map: texture,
+          roughness: 0.4,
+          metalness: 0.1,
+        });
+      } else {
+        // Glassy casino dice for light mode
+        return new THREE.MeshPhysicalMaterial({
+          map: texture,
+          roughness: 0.02,
+          metalness: 0,
+          clearcoat: 1.0,
+          clearcoatRoughness: 0.02,
+          reflectivity: 1.0,
+          transmission: 0.12,
+          thickness: 1.0,
+          ior: 1.52,
+          transparent: true,
+          attenuationColor: new THREE.Color('#350000'),
+          attenuationDistance: 0.8,
+          envMapIntensity: 1.5,
+          specularIntensity: 1.0,
+        });
+      }
     });
-  }, []);
+  }, [darkMode]);
 
   // Calculate rotation to show target face on top
   // With our face mapping: +X=2, -X=5, +Y=3, -Y=4, +Z=1, -Z=6

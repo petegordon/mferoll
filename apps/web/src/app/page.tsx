@@ -27,6 +27,7 @@ function needsMotionPermission(): boolean {
 
 export default function Home() {
   useAccount();
+  const [darkMode, setDarkMode] = useState(false);
   const [isRolling, setIsRolling] = useState(false);
   const [diceResult, setDiceResult] = useState<{ die1: number; die2: number } | null>(null);
   const [targetFaces, setTargetFaces] = useState<{ die1: number; die2: number } | null>(null);
@@ -136,10 +137,10 @@ export default function Home() {
 
   return (
     <main className="h-[100dvh] flex flex-col overflow-hidden relative">
-      {/* Background logo - full screen white bg with logo at top */}
-      <div className="absolute inset-0 bg-white pointer-events-none pt-4">
+      {/* Background */}
+      <div className={`absolute inset-0 overflow-hidden pointer-events-none pt-4 ${darkMode ? 'bg-gray-700' : 'bg-white'}`}>
         <img
-          src="/logo.png"
+          src="/logo-transparent.png"
           alt=""
           className="w-full h-auto"
         />
@@ -149,14 +150,18 @@ export default function Home() {
       {!hasStarted && needsPermission === true && <TouchToStart onStart={handleStart} />}
 
       {/* Minimal header */}
-      <header className="flex-shrink-0 px-4 py-3 safe-top relative z-20">
+      <header className="flex-shrink-0 flex items-center gap-2 px-4 pb-3 safe-top relative z-20">
         <ConnectButton.Custom>
           {({ account, chain, openConnectModal, openAccountModal, mounted }) => {
             const connected = mounted && account && chain;
             return (
               <button
                 onClick={connected ? openAccountModal : openConnectModal}
-                className="bg-gray-600 hover:bg-gray-500 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors shadow-lg"
+                className={`text-sm font-medium px-4 py-2 rounded-lg transition-colors shadow-lg ${
+                  darkMode
+                    ? 'bg-gray-500 hover:bg-gray-400 text-white'
+                    : 'bg-gray-600 hover:bg-gray-500 text-white'
+                }`}
               >
                 {connected ? (
                   <span>{account.displayName}</span>
@@ -167,6 +172,33 @@ export default function Home() {
             );
           }}
         </ConnectButton.Custom>
+        <button
+          onClick={() => setDarkMode(!darkMode)}
+          className={`p-2 rounded-lg transition-colors shadow-lg ${
+            darkMode
+              ? 'bg-gray-500 hover:bg-gray-400 text-white'
+              : 'bg-gray-600 hover:bg-gray-500 text-white'
+          }`}
+          aria-label={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
+        >
+          {darkMode ? (
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="5"/>
+              <line x1="12" y1="1" x2="12" y2="3"/>
+              <line x1="12" y1="21" x2="12" y2="23"/>
+              <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+              <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+              <line x1="1" y1="12" x2="3" y2="12"/>
+              <line x1="21" y1="12" x2="23" y2="12"/>
+              <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+              <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+            </svg>
+          ) : (
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+            </svg>
+          )}
+        </button>
       </header>
 
       {/* Full screen dice view */}
@@ -176,6 +208,7 @@ export default function Home() {
           isRolling={isRolling}
           targetFaces={targetFaces}
           onDiceSettled={handleDiceSettled}
+          darkMode={darkMode}
         />
 
         {/* Initial roll button - before first roll */}
@@ -183,7 +216,11 @@ export default function Home() {
           <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex flex-col items-center gap-3 safe-bottom pb-2">
             <button
               onClick={handleThrowAgain}
-              className="bg-gray-600 hover:bg-gray-500 text-white font-medium px-6 py-3 rounded-xl transition-colors shadow-lg"
+              className={`font-medium px-6 py-3 rounded-xl transition-colors shadow-lg ${
+                darkMode
+                  ? 'bg-gray-500 hover:bg-gray-400 text-white'
+                  : 'bg-gray-600 hover:bg-gray-500 text-white'
+              }`}
             >
               {shakeEnabled ? 'Shake or Tap to Roll' : 'Tap to Roll'}
             </button>
@@ -193,23 +230,31 @@ export default function Home() {
         {/* Result display and Throw Again button */}
         {diceResult && !isRolling && (
           <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex flex-col items-center gap-3 safe-bottom pb-2">
-            <div className="bg-gray-600 rounded-xl px-6 py-3 text-center shadow-lg">
+            <div className={`rounded-xl px-6 py-3 text-center shadow-lg ${
+              darkMode ? 'bg-gray-500' : 'bg-gray-600'
+            }`}>
               <div className="text-3xl font-bold text-white">
                 {diceResult.die1 + diceResult.die2}
               </div>
-              <div className="text-gray-400 text-sm">
+              <div className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-400'}`}>
                 {diceResult.die1} + {diceResult.die2}
               </div>
             </div>
             {canRoll ? (
               <button
                 onClick={handleThrowAgain}
-                className="bg-gray-600 hover:bg-gray-500 text-white font-medium px-5 py-2.5 rounded-xl transition-colors text-sm shadow-lg"
+                className={`font-medium px-5 py-2.5 rounded-xl transition-colors text-sm shadow-lg ${
+                  darkMode
+                    ? 'bg-gray-500 hover:bg-gray-400 text-white'
+                    : 'bg-gray-600 hover:bg-gray-500 text-white'
+                }`}
               >
                 {shakeEnabled ? 'Shake or Tap to Roll' : 'Tap to Roll'}
               </button>
             ) : (
-              <div className="bg-gray-600 text-white font-medium px-5 py-2.5 rounded-xl text-sm shadow-lg">
+              <div className={`font-medium px-5 py-2.5 rounded-xl text-sm shadow-lg ${
+                darkMode ? 'bg-gray-500 text-white' : 'bg-gray-600 text-white'
+              }`}>
                 Wait {Math.ceil(cooldownRemaining / 1000)}s...
               </div>
             )}

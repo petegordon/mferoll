@@ -17,13 +17,11 @@ html, body {
 }
 
 /* Safe area support for notch/home indicator */
-@supports (padding: env(safe-area-inset-bottom)) {
-  .safe-bottom {
-    padding-bottom: env(safe-area-inset-bottom);
-  }
-  .safe-top {
-    padding-top: env(safe-area-inset-top);
-  }
+.safe-bottom {
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), 20px);
+}
+.safe-top {
+  padding-top: max(env(safe-area-inset-top, 0px), 6px);
 }
 
 body {
