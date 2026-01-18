@@ -1,10 +1,44 @@
-import { getDefaultConfig } from '@rainbow-me/rainbowkit';
+import { connectorsForWallets, getDefaultConfig } from '@rainbow-me/rainbowkit';
+import {
+  coinbaseWallet,
+  metaMaskWallet,
+  rainbowWallet,
+  walletConnectWallet,
+  injectedWallet,
+} from '@rainbow-me/rainbowkit/wallets';
+import { createConfig, http } from 'wagmi';
 import { base, baseSepolia } from 'wagmi/chains';
 
-export const wagmiConfig = getDefaultConfig({
-  appName: 'DiceRoll',
-  projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || 'demo-project-id',
+const projectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || 'demo-project-id';
+
+// Configure wallets with Coinbase Wallet prioritized for in-app browser detection
+const connectors = connectorsForWallets(
+  [
+    {
+      groupName: 'Recommended',
+      wallets: [
+        // Injected wallet first - this catches Coinbase Wallet in-app browser
+        injectedWallet,
+        coinbaseWallet,
+        metaMaskWallet,
+        rainbowWallet,
+        walletConnectWallet,
+      ],
+    },
+  ],
+  {
+    appName: 'mferoll',
+    projectId,
+  }
+);
+
+export const wagmiConfig = createConfig({
+  connectors,
   chains: [base, baseSepolia],
+  transports: {
+    [base.id]: http(),
+    [baseSepolia.id]: http(),
+  },
   ssr: true,
 });
 

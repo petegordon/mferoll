@@ -5,6 +5,7 @@ import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { TouchToStart } from '@/components/motion/TouchToStart';
 import { useAccount } from 'wagmi';
 import { useState, useCallback, useEffect, useRef } from 'react';
+import { SevenElevenGame } from '@/components/SevenElevenGame';
 
 // Dynamic import for Three.js components to avoid SSR issues
 const DiceScene = dynamic(() => import('@/components/dice/DiceScene'), {
@@ -26,7 +27,7 @@ function needsMotionPermission(): boolean {
 }
 
 export default function Home() {
-  useAccount();
+  const { isConnected } = useAccount();
   const [darkMode, setDarkMode] = useState(false);
   const [isRolling, setIsRolling] = useState(false);
   const [diceResult, setDiceResult] = useState<{ die1: number; die2: number } | null>(null);
@@ -211,8 +212,8 @@ export default function Home() {
           darkMode={darkMode}
         />
 
-        {/* Initial roll button - before first roll */}
-        {hasStarted && !diceResult && !isRolling && (
+        {/* Initial roll button - before first roll (when not connected) */}
+        {hasStarted && !diceResult && !isRolling && !isConnected && (
           <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex flex-col items-center gap-3 safe-bottom pb-2">
             <button
               onClick={handleThrowAgain}
@@ -227,8 +228,8 @@ export default function Home() {
           </div>
         )}
 
-        {/* Result display and Throw Again button */}
-        {diceResult && !isRolling && (
+        {/* Result display and Throw Again button (when not connected) */}
+        {diceResult && !isRolling && !isConnected && (
           <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex flex-col items-center gap-3 safe-bottom pb-2">
             <div className={`rounded-xl px-6 py-3 text-center shadow-lg ${
               darkMode ? 'bg-gray-500' : 'bg-gray-600'
@@ -258,6 +259,20 @@ export default function Home() {
                 Wait {Math.ceil(cooldownRemaining / 1000)}s...
               </div>
             )}
+          </div>
+        )}
+
+        {/* 7/11 Game UI (when connected) */}
+        {hasStarted && isConnected && (
+          <div className="absolute bottom-0 left-0 right-0 safe-bottom pb-4">
+            <SevenElevenGame
+              diceResult={diceResult}
+              darkMode={darkMode}
+              onRoll={handleThrowAgain}
+              isRolling={isRolling}
+              canRoll={canRoll}
+              cooldownRemaining={cooldownRemaining}
+            />
           </div>
         )}
       </div>

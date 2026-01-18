@@ -35,3 +35,78 @@ model IndexerState {
   lastBlockNumber Int
   updatedAt       DateTime @updatedAt
 }
+
+// ============ SevenEleven Game Models ============
+
+model SevenElevenPlayer {
+  id              String   @id @default(uuid())
+  address         String   @unique
+  totalWins       Int      @default(0)
+  totalLosses     Int      @default(0)
+  totalFeePaid    String   @default("0") // Total USD cents paid as fees
+  firstPlayTime   DateTime?
+  lastPlayTime    DateTime?
+  totalSessions   Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  rolls           SevenElevenRoll[]
+  sessions        SevenElevenSession[]
+
+  @@index([address])
+  @@index([lastPlayTime])
+}
+
+model SevenElevenRoll {
+  id              String   @id @default(uuid())
+  requestId       String   @unique
+  playerId        String
+  player          SevenElevenPlayer @relation(fields: [playerId], references: [id])
+  token           String   // Token address used for this roll
+  betAmount       String   // Net bet amount after fee
+  feeAmount       String   // Fee amount sent to drb.eth
+  die1            Int?
+  die2            Int?
+  sum             Int?
+  won             Boolean?
+  payout          String?  // Payout amount if won
+  settled         Boolean  @default(false)
+  txHash          String   // Transaction hash for roll request
+  blockNumber     Int
+  timestamp       DateTime @default(now())
+  settledAt       DateTime?
+  settleTxHash    String?  // Transaction hash for settlement
+  sessionId       String?
+  session         SevenElevenSession? @relation(fields: [sessionId], references: [id])
+
+  @@index([playerId])
+  @@index([token])
+  @@index([settled])
+  @@index([timestamp])
+  @@index([sessionId])
+}
+
+model SevenElevenSession {
+  id              String   @id @default(uuid())
+  playerId        String
+  player          SevenElevenPlayer @relation(fields: [playerId], references: [id])
+  sessionNumber   Int      // Incremental session number for the player
+  startTime       DateTime @default(now())
+  endTime         DateTime?
+  totalRolls      Int      @default(0)
+  wins            Int      @default(0)
+  losses          Int      @default(0)
+  netProfit       String   @default("0") // Net profit/loss in token units
+
+  rolls           SevenElevenRoll[]
+
+  @@unique([playerId, sessionNumber])
+  @@index([playerId])
+  @@index([startTime])
+}
+
+model SevenElevenIndexerState {
+  id              String @id @default("seven_eleven")
+  lastBlockNumber Int
+  updatedAt       DateTime @updatedAt
+}

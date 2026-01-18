@@ -14,7 +14,7 @@ contract DeployScript is Script {
     bytes32 constant KEY_HASH_BASE = 0x00b81b5a9c3955d5dc54e7424165caaa91e20df387a3d019a8c9fd43f8ec09bc;
 
     // mfercoin address (same on both networks)
-    address constant MFERCOIN = 0xe3086852a4b125803c815a158249ae468a3254ca;
+    address constant MFERCOIN = 0xE3086852A4B125803C815a158249ae468A3254Ca;
 
     function run() external {
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");

@@ -6,14 +6,13 @@ import {VRFV2PlusClient} from "@chainlink/contracts/src/v0.8/vrf/dev/libraries/V
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 /**
  * @title DiceBetting
  * @notice A provably fair dice betting game using Chainlink VRF v2.5
  * @dev Uses two random words from VRF to generate independent die results
  */
-contract DiceBetting is VRFConsumerBaseV2Plus, ReentrancyGuard, Ownable {
+contract DiceBetting is VRFConsumerBaseV2Plus, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     // Bet types
@@ -108,7 +107,7 @@ contract DiceBetting is VRFConsumerBaseV2Plus, ReentrancyGuard, Ownable {
         uint256 _subscriptionId,
         bytes32 _keyHash,
         address _bettingToken
-    ) VRFConsumerBaseV2Plus(_vrfCoordinator) Ownable(msg.sender) {
+    ) VRFConsumerBaseV2Plus(_vrfCoordinator) {
         subscriptionId = _subscriptionId;
         keyHash = _keyHash;
         bettingToken = IERC20(_bettingToken);
