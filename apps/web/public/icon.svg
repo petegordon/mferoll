@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <!-- Background -->
+  <rect width="512" height="512" rx="96" fill="#1a1a2e"/>
+
+  <!-- mfer character circle -->
+  <circle cx="200" cy="256" r="140" fill="#2A5ADA"/>
+
+  <!-- Simplified mfer face -->
+  <ellipse cx="160" cy="230" rx="20" ry="25" fill="#FFFFFF"/>
+  <ellipse cx="240" cy="230" rx="20" ry="25" fill="#FFFFFF"/>
+  <path d="M140 300 Q200 340 260 300" stroke="#FFFFFF" stroke-width="12" fill="none" stroke-linecap="round"/>
+
+  <!-- Dice -->
+  <g transform="translate(300, 156)">
+    <rect x="0" y="0" width="160" height="160" rx="24" fill="#FFFFFF"/>
+    <circle cx="40" cy="40" r="16" fill="#2A5ADA"/>
+    <circle cx="120" cy="40" r="16" fill="#2A5ADA"/>
+    <circle cx="80" cy="80" r="16" fill="#2A5ADA"/>
+    <circle cx="40" cy="120" r="16" fill="#2A5ADA"/>
+    <circle cx="120" cy="120" r="16" fill="#2A5ADA"/>
+  </g>
+</svg>

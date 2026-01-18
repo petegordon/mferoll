@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 60" fill="none">
+  <!-- mfer character silhouette (simplified) -->
+  <circle cx="30" cy="30" r="28" fill="#2A5ADA"/>
+  <g transform="translate(10, 8) scale(0.1)" fill="#FFFFFF">
+    <path d="M200 380c-20-10-30-25-30-45 0-30 15-50 40-65 20-12 45-18 75-18s55 6 75 18c25 15 40 35 40 65 0 20-10 35-30 45-15 8-35 12-60 15v25c25-3 45-7 60-15 30-15 50-40 50-70 0-40-20-70-55-90-25-15-55-22-90-22s-65 7-90 22c-35 20-55 50-55 90 0 30 20 55 50 70 15 8 35 12 60 15v-25c-25-3-45-7-60-15z"/>
+    <circle cx="160" cy="200" r="25"/>
+    <circle cx="240" cy="200" r="25"/>
+  </g>
+
+  <!-- Dice icon -->
+  <g transform="translate(155, 15)">
+    <rect x="0" y="0" width="30" height="30" rx="4" fill="#FFFFFF" stroke="#2A5ADA" stroke-width="2"/>
+    <circle cx="8" cy="8" r="3" fill="#2A5ADA"/>
+    <circle cx="22" cy="8" r="3" fill="#2A5ADA"/>
+    <circle cx="15" cy="15" r="3" fill="#2A5ADA"/>
+    <circle cx="8" cy="22" r="3" fill="#2A5ADA"/>
+    <circle cx="22" cy="22" r="3" fill="#2A5ADA"/>
+  </g>
+
+  <!-- Text -->
+  <text x="68" y="40" font-family="system-ui, -apple-system, sans-serif" font-size="24" font-weight="bold" fill="#FFFFFF">mferoll</text>
+</svg>

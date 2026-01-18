@@ -14,8 +14,15 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: 'DiceRoll - 3D Dice Betting',
-  description: 'Roll the dice and bet with mfercoin on Base blockchain',
+  title: 'mferoll - 3D Dice Rolling',
+  description: 'Roll the dice with mfercoin on Base blockchain',
+  icons: {
+    icon: [
+      { url: '/favicon.png', sizes: '32x32', type: 'image/png' },
+      { url: '/mfer-icon.png', sizes: '128x128', type: 'image/png' },
+    ],
+    apple: '/mfer-icon.png',
+  },
 };
 
 export default function RootLayout({
