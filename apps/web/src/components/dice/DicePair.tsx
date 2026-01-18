@@ -49,13 +49,13 @@ export function DicePair({ isRolling, targetFaces, onSettled }: DicePairProps) {
   return (
     <group>
       <D6
-        position={[-1.2, 0, 0]}
+        position={[-1.0, 0, 0]}
         isRolling={isRolling}
         targetFace={targetFaces?.die1}
         onSettled={handleDie1Settled}
       />
       <D6
-        position={[1.2, 0, 0]}
+        position={[1.0, 0, 0]}
         isRolling={isRolling}
         targetFace={targetFaces?.die2}
         onSettled={handleDie2Settled}

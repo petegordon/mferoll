@@ -5,8 +5,6 @@ import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { TouchToStart } from '@/components/motion/TouchToStart';
 import { useAccount } from 'wagmi';
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { TEST_MODE } from '@/lib/testMode';
-import { useTestBalance } from '@/hooks/useTestBalance';
 
 // Dynamic import for Three.js components to avoid SSR issues
 const DiceScene = dynamic(() => import('@/components/dice/DiceScene'), {
@@ -28,8 +26,7 @@ function needsMotionPermission(): boolean {
 }
 
 export default function Home() {
-  const { isConnected } = useAccount();
-  const { balance } = useTestBalance();
+  useAccount();
   const [isRolling, setIsRolling] = useState(false);
   const [diceResult, setDiceResult] = useState<{ die1: number; die2: number } | null>(null);
   const [targetFaces, setTargetFaces] = useState<{ die1: number; die2: number } | null>(null);
@@ -138,41 +135,42 @@ export default function Home() {
   }, [canRoll, isRolling, startCooldown]);
 
   return (
-    <main className="h-[100dvh] flex flex-col bg-slate-900 overflow-hidden">
+    <main className="h-[100dvh] flex flex-col overflow-hidden relative">
+      {/* Background logo - full screen white bg with logo at top */}
+      <div className="absolute inset-0 bg-white pointer-events-none pt-4">
+        <img
+          src="/logo.png"
+          alt=""
+          className="w-full h-auto"
+        />
+      </div>
+
       {/* Touch to Start overlay - only for iOS that needs motion permission */}
       {!hasStarted && needsPermission === true && <TouchToStart onStart={handleStart} />}
 
       {/* Minimal header */}
-      <header className="flex-shrink-0 flex justify-between items-center p-4 bg-black/30 safe-top">
-        <h1 className="text-xl font-bold text-white">mferoll</h1>
-        <div className="flex items-center gap-3">
-          {isConnected && TEST_MODE && (
-            <div className="text-sm text-yellow-400 font-medium">
-              {balance.toLocaleString()} MFER
-            </div>
-          )}
-          <ConnectButton.Custom>
-            {({ account, chain, openConnectModal, mounted }) => {
-              const connected = mounted && account && chain;
-              return (
-                <button
-                  onClick={openConnectModal}
-                  className="bg-white/10 hover:bg-white/20 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
-                >
-                  {connected ? (
-                    <span>{account.displayName}</span>
-                  ) : (
-                    <span>Connect</span>
-                  )}
-                </button>
-              );
-            }}
-          </ConnectButton.Custom>
-        </div>
+      <header className="flex-shrink-0 px-4 py-3 safe-top relative z-20">
+        <ConnectButton.Custom>
+          {({ account, chain, openConnectModal, openAccountModal, mounted }) => {
+            const connected = mounted && account && chain;
+            return (
+              <button
+                onClick={connected ? openAccountModal : openConnectModal}
+                className="bg-gray-600 hover:bg-gray-500 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors shadow-lg"
+              >
+                {connected ? (
+                  <span>{account.displayName}</span>
+                ) : (
+                  <span>Connect</span>
+                )}
+              </button>
+            );
+          }}
+        </ConnectButton.Custom>
       </header>
 
       {/* Full screen dice view */}
-      <div className="flex-1 relative min-h-0">
+      <div className="flex-1 relative min-h-0 z-10">
         <DiceScene
           key={rollCount}
           isRolling={isRolling}
@@ -185,7 +183,7 @@ export default function Home() {
           <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex flex-col items-center gap-3 safe-bottom pb-2">
             <button
               onClick={handleThrowAgain}
-              className="bg-white/20 hover:bg-white/30 text-white font-medium px-6 py-3 rounded-xl transition-colors"
+              className="bg-gray-600 hover:bg-gray-500 text-white font-medium px-6 py-3 rounded-xl transition-colors shadow-lg"
             >
               {shakeEnabled ? 'Shake or Tap to Roll' : 'Tap to Roll'}
             </button>
@@ -195,23 +193,23 @@ export default function Home() {
         {/* Result display and Throw Again button */}
         {diceResult && !isRolling && (
           <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex flex-col items-center gap-3 safe-bottom pb-2">
-            <div className="bg-black/60 backdrop-blur-sm rounded-2xl px-6 py-3 text-center">
+            <div className="bg-gray-600 rounded-xl px-6 py-3 text-center shadow-lg">
               <div className="text-3xl font-bold text-white">
                 {diceResult.die1 + diceResult.die2}
               </div>
-              <div className="text-white/50 text-sm">
+              <div className="text-gray-400 text-sm">
                 {diceResult.die1} + {diceResult.die2}
               </div>
             </div>
             {canRoll ? (
               <button
                 onClick={handleThrowAgain}
-                className="bg-white/20 hover:bg-white/30 text-white font-medium px-5 py-2.5 rounded-xl transition-colors text-sm"
+                className="bg-gray-600 hover:bg-gray-500 text-white font-medium px-5 py-2.5 rounded-xl transition-colors text-sm shadow-lg"
               >
                 {shakeEnabled ? 'Shake or Tap to Roll' : 'Tap to Roll'}
               </button>
             ) : (
-              <div className="text-white/50 text-sm">
+              <div className="bg-gray-600 text-white font-medium px-5 py-2.5 rounded-xl text-sm shadow-lg">
                 Wait {Math.ceil(cooldownRemaining / 1000)}s...
               </div>
             )}

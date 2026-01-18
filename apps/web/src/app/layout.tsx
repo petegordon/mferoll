@@ -19,9 +19,9 @@ export const metadata: Metadata = {
   icons: {
     icon: [
       { url: '/favicon.png', sizes: '32x32', type: 'image/png' },
-      { url: '/mfer-icon.png', sizes: '128x128', type: 'image/png' },
+      { url: '/logo.png', sizes: '1024x1024', type: 'image/png' },
     ],
-    apple: '/mfer-icon.png',
+    apple: '/logo.png',
   },
 };
 

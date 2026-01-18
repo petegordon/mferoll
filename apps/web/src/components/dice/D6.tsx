@@ -11,7 +11,7 @@ interface D6Props {
   isRolling: boolean;
 }
 
-// Create pip texture for dice face
+// Create pip texture for dice face - red background with white pips
 function createPipTexture(pips: number): THREE.CanvasTexture {
   const size = 256;
   const canvas = document.createElement('canvas');
@@ -19,12 +19,16 @@ function createPipTexture(pips: number): THREE.CanvasTexture {
   canvas.height = size;
   const ctx = canvas.getContext('2d')!;
 
-  ctx.fillStyle = '#ffffff';
+  // Deep casino red background
+  ctx.fillStyle = '#520000';
   ctx.fillRect(0, 0, size, size);
 
-  ctx.fillStyle = '#1a1a1a';
-  const pipRadius = size * 0.08;
-  const margin = size * 0.22;
+  // White pips
+  ctx.fillStyle = '#ffffff';
+  ctx.shadowColor = '#ffffff';
+  ctx.shadowBlur = 6;
+  const pipRadius = size * 0.09;
+  const margin = size * 0.23;
   const center = size / 2;
 
   const pipPositions: Record<number, [number, number][]> = {
@@ -57,7 +61,7 @@ export function D6({ position, targetFace = 1, onSettled, isRolling }: D6Props) 
   const startQuatRef = useRef(new THREE.Quaternion());
   const targetQuatRef = useRef(new THREE.Quaternion());
 
-  // Create materials for each face
+  // Create materials for each face - shiny glassy red
   // BoxGeometry face order: +X, -X, +Y, -Y, +Z, -Z (indices 0-5)
   // Standard die: opposite faces sum to 7 (1-6, 2-5, 3-4)
   // We'll put: +X=2, -X=5, +Y=3, -Y=4, +Z=1, -Z=6
@@ -65,10 +69,21 @@ export function D6({ position, targetFace = 1, onSettled, isRolling }: D6Props) 
     const faceOrder = [2, 5, 3, 4, 1, 6];
     return faceOrder.map((pips) => {
       const texture = createPipTexture(pips);
-      return new THREE.MeshStandardMaterial({
+      return new THREE.MeshPhysicalMaterial({
         map: texture,
-        roughness: 0.3,
-        metalness: 0.1,
+        roughness: 0.02,
+        metalness: 0,
+        clearcoat: 1.0,
+        clearcoatRoughness: 0.02,
+        reflectivity: 1.0,
+        transmission: 0.12,
+        thickness: 1.0,
+        ior: 1.52,
+        transparent: true,
+        attenuationColor: new THREE.Color('#350000'),
+        attenuationDistance: 0.8,
+        envMapIntensity: 1.5,
+        specularIntensity: 1.0,
       });
     });
   }, []);

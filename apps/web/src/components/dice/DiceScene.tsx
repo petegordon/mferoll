@@ -1,6 +1,7 @@
 'use client';
 
 import { Canvas } from '@react-three/fiber';
+import { Environment } from '@react-three/drei';
 import { DicePair } from './DicePair';
 
 interface DiceSceneProps {
@@ -12,8 +13,11 @@ interface DiceSceneProps {
 export default function DiceScene({ isRolling, targetFaces, onDiceSettled }: DiceSceneProps) {
   return (
     <div className="w-full h-full">
-      <Canvas shadows camera={{ position: [0, 8, 0], fov: 50, near: 0.1, far: 100 }}>
+      <Canvas shadows camera={{ position: [0, 8, 0], fov: 50, near: 0.1, far: 100 }} gl={{ alpha: true }} style={{ background: 'transparent' }}>
         {/* Top-down view - camera looks straight down */}
+
+        {/* Environment for reflections */}
+        <Environment preset="studio" />
 
         {/* Lighting */}
         <ambientLight intensity={0.6} />
@@ -30,18 +34,20 @@ export default function DiceScene({ isRolling, targetFaces, onDiceSettled }: Dic
         />
         <pointLight position={[-5, 10, -5]} intensity={0.4} />
 
-        {/* Simple floor plane */}
+        {/* Invisible floor plane - subtle shadows */}
         <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.5, 0]} receiveShadow>
           <planeGeometry args={[20, 20]} />
-          <meshStandardMaterial color="#1a1a2e" />
+          <shadowMaterial transparent opacity={0.05} />
         </mesh>
 
-        {/* Dice */}
-        <DicePair
-          isRolling={isRolling}
-          targetFaces={targetFaces}
-          onSettled={onDiceSettled}
-        />
+        {/* Dice - offset in Z to move down on screen */}
+        <group position={[0, 0, 1.1]}>
+          <DicePair
+            isRolling={isRolling}
+            targetFaces={targetFaces}
+            onSettled={onDiceSettled}
+          />
+        </group>
       </Canvas>
     </div>
   );
