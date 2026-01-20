@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {VRFConsumerBaseV2Plus} from "@chainlink/contracts/src/v0.8/vrf/dev/VRFConsumerBaseV2Plus.sol";
-import {VRFV2PlusClient} from "@chainlink/contracts/src/v0.8/vrf/dev/libraries/VRFV2PlusClient.sol";
+import {IEntropyV2} from "./pyth/IEntropyV2.sol";
+import {IEntropyConsumer} from "./pyth/IEntropyConsumer.sol";
 import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 interface IUniswapV3Pool {
     function observe(uint32[] calldata secondsAgos)
@@ -20,10 +21,10 @@ interface IUniswapV3Pool {
 
 /**
  * @title SevenEleven
- * @notice A 7/11 dice game with multi-token support using Chainlink VRF
+ * @notice A 7/11 dice game with multi-token support using Pyth Entropy VRF
  * @dev Win on 7 or 11, lose on any other sum. 3x payout on wins, 10% fee.
  */
-contract SevenEleven is VRFConsumerBaseV2Plus, ReentrancyGuard {
+contract SevenEleven is IEntropyConsumer, ReentrancyGuard, Ownable {
     using SafeERC20 for IERC20;
 
     // Token configuration
@@ -62,12 +63,8 @@ contract SevenEleven is VRFConsumerBaseV2Plus, ReentrancyGuard {
     uint256 public constant SESSION_GAP = 1 hours;
     uint32 public constant TWAP_PERIOD = 1800;       // 30 minutes for TWAP
 
-    // Chainlink VRF configuration
-    uint256 public immutable subscriptionId;
-    bytes32 public immutable keyHash;
-    uint32 public constant CALLBACK_GAS_LIMIT = 250000;
-    uint16 public constant REQUEST_CONFIRMATIONS = 3;
-    uint32 public constant NUM_WORDS = 2;
+    // Pyth Entropy
+    IEntropyV2 public immutable entropy;
 
     // Addresses
     address public immutable FEE_RECIPIENT;          // drb.eth
@@ -87,16 +84,16 @@ contract SevenEleven is VRFConsumerBaseV2Plus, ReentrancyGuard {
     // Player statistics
     mapping(address => PlayerStats) public playerStats;
 
-    // Pending VRF requests
-    mapping(uint256 => PendingRoll) public pendingRolls;
+    // Pending VRF requests: sequenceNumber => PendingRoll
+    mapping(uint64 => PendingRoll) public pendingRolls;
 
     // Events
     event TokenAdded(address indexed token, address uniswapPool);
     event TokenRemoved(address indexed token);
     event Deposited(address indexed player, address indexed token, uint256 amount);
     event Withdrawn(address indexed player, address indexed token, uint256 amount);
-    event RollRequested(uint256 indexed requestId, address indexed player, address indexed token, uint256 betAmount);
-    event RollSettled(uint256 indexed requestId, address indexed player, uint8 die1, uint8 die2, bool won, uint256 payout);
+    event RollRequested(uint64 indexed sequenceNumber, address indexed player, address indexed token, uint256 betAmount);
+    event RollSettled(uint64 indexed sequenceNumber, address indexed player, uint8 die1, uint8 die2, bool won, uint256 payout);
     event FeePaid(address indexed player, address indexed token, uint256 amount);
     event NewSession(address indexed player, uint256 sessionNumber);
     event HouseLiquidityDeposited(address indexed token, uint256 amount);
@@ -112,20 +109,84 @@ contract SevenEleven is VRFConsumerBaseV2Plus, ReentrancyGuard {
     error PriceStale();
     error InvalidPrice();
     error PoolNotFound();
+    error InsufficientFee();
 
     constructor(
-        address _vrfCoordinator,
-        uint256 _subscriptionId,
-        bytes32 _keyHash,
+        address _entropy,
         address _feeRecipient,
         address _ethUsdPriceFeed,
         address _weth
-    ) VRFConsumerBaseV2Plus(_vrfCoordinator) {
-        subscriptionId = _subscriptionId;
-        keyHash = _keyHash;
+    ) Ownable(msg.sender) {
+        entropy = IEntropyV2(_entropy);
         FEE_RECIPIENT = _feeRecipient;
         ethUsdPriceFeed = AggregatorV3Interface(_ethUsdPriceFeed);
         WETH = _weth;
+    }
+
+    // ============ Pyth Entropy Interface ============
+
+    /**
+     * @notice Returns the Entropy contract address (required by IEntropyConsumer)
+     */
+    function getEntropy() internal view override returns (address) {
+        return address(entropy);
+    }
+
+    /**
+     * @notice Callback from Pyth Entropy when randomness is ready
+     * @dev This function MUST NOT revert
+     */
+    function entropyCallback(
+        uint64 sequenceNumber,
+        address /* provider */,
+        bytes32 randomNumber
+    ) internal override {
+        PendingRoll storage pendingRoll = pendingRolls[sequenceNumber];
+
+        // If already settled or invalid, just return (don't revert)
+        if (pendingRoll.player == address(0)) {
+            return;
+        }
+
+        address player = pendingRoll.player;
+        address token = pendingRoll.token;
+        uint256 netBet = pendingRoll.betAmount;
+
+        // Generate dice results (1-6 for each die) from single randomness
+        // Use different parts of the bytes32 for each die
+        uint256 rand = uint256(randomNumber);
+        uint8 die1 = uint8((rand % 6) + 1);
+        uint8 die2 = uint8(((rand >> 128) % 6) + 1);
+        uint8 sum = die1 + die2;
+
+        // Check win condition: 7 or 11
+        bool won = (sum == 7 || sum == 11);
+
+        PlayerStats storage stats = playerStats[player];
+        uint256 payout = 0;
+
+        if (won) {
+            // 3x payout on the net bet
+            payout = netBet * WIN_MULTIPLIER;
+
+            // House pays the extra 2x
+            uint256 housePay = payout - netBet;
+            houseLiquidity[token] -= housePay;
+
+            // Credit player balance
+            playerBalances[player][token] += payout;
+
+            stats.totalWins++;
+        } else {
+            // House takes the net bet
+            houseLiquidity[token] += netBet;
+            stats.totalLosses++;
+        }
+
+        // Clear pending roll
+        delete pendingRolls[sequenceNumber];
+
+        emit RollSettled(sequenceNumber, player, die1, die2, won, payout);
     }
 
     // ============ Player Functions ============
@@ -166,13 +227,25 @@ contract SevenEleven is VRFConsumerBaseV2Plus, ReentrancyGuard {
     }
 
     /**
-     * @notice Roll the dice - costs $0.25 worth of tokens
-     * @param token The token to bet with
-     * @return requestId The VRF request ID
+     * @notice Get the current Pyth Entropy fee
+     * @return fee The fee in wei required for randomness request
      */
-    function roll(address token) external nonReentrant returns (uint256 requestId) {
+    function getEntropyFee() public view returns (uint256 fee) {
+        return entropy.getFeeV2();
+    }
+
+    /**
+     * @notice Roll the dice - costs $0.25 worth of tokens + Pyth Entropy fee in ETH
+     * @param token The token to bet with
+     * @return sequenceNumber The Pyth Entropy sequence number
+     */
+    function roll(address token) external payable nonReentrant returns (uint64 sequenceNumber) {
         TokenConfig storage config = supportedTokens[token];
         if (!config.enabled) revert TokenNotSupported();
+
+        // Check Pyth Entropy fee
+        uint256 entropyFee = entropy.getFeeV2();
+        if (msg.value < entropyFee) revert InsufficientFee();
 
         uint256 betAmount = getBetAmount(token);
         uint256 feeAmount = (betAmount * FEE_BPS) / BPS_DENOMINATOR;
@@ -196,21 +269,10 @@ contract SevenEleven is VRFConsumerBaseV2Plus, ReentrancyGuard {
         // Update session tracking
         _updateSession(msg.sender);
 
-        // Request randomness
-        requestId = s_vrfCoordinator.requestRandomWords(
-            VRFV2PlusClient.RandomWordsRequest({
-                keyHash: keyHash,
-                subId: subscriptionId,
-                requestConfirmations: REQUEST_CONFIRMATIONS,
-                callbackGasLimit: CALLBACK_GAS_LIMIT,
-                numWords: NUM_WORDS,
-                extraArgs: VRFV2PlusClient._argsToBytes(
-                    VRFV2PlusClient.ExtraArgsV1({nativePayment: false})
-                )
-            })
-        );
+        // Request randomness from Pyth Entropy
+        sequenceNumber = entropy.requestV2{value: entropyFee}();
 
-        pendingRolls[requestId] = PendingRoll({
+        pendingRolls[sequenceNumber] = PendingRoll({
             player: msg.sender,
             token: token,
             betAmount: netBet, // Store net bet after fee
@@ -221,57 +283,14 @@ contract SevenEleven is VRFConsumerBaseV2Plus, ReentrancyGuard {
         PlayerStats storage stats = playerStats[msg.sender];
         stats.totalFeePaid += getTokenValueInCents(token, feeAmount);
 
-        emit RollRequested(requestId, msg.sender, token, betAmount);
+        emit RollRequested(sequenceNumber, msg.sender, token, betAmount);
         emit FeePaid(msg.sender, token, feeAmount);
-    }
 
-    /**
-     * @notice VRF callback - settle the roll
-     */
-    function fulfillRandomWords(
-        uint256 requestId,
-        uint256[] calldata randomWords
-    ) internal override {
-        PendingRoll storage pendingRoll = pendingRolls[requestId];
-        if (pendingRoll.player == address(0)) revert RollAlreadySettled();
-
-        address player = pendingRoll.player;
-        address token = pendingRoll.token;
-        uint256 netBet = pendingRoll.betAmount;
-
-        // Generate dice results (1-6 for each die)
-        uint8 die1 = uint8((randomWords[0] % 6) + 1);
-        uint8 die2 = uint8((randomWords[1] % 6) + 1);
-        uint8 sum = die1 + die2;
-
-        // Check win condition: 7 or 11
-        bool won = (sum == 7 || sum == 11);
-
-        PlayerStats storage stats = playerStats[player];
-        uint256 payout = 0;
-
-        if (won) {
-            // 3x payout on the net bet
-            payout = netBet * WIN_MULTIPLIER;
-
-            // House pays the extra 2x
-            uint256 housePay = payout - netBet;
-            houseLiquidity[token] -= housePay;
-
-            // Credit player balance
-            playerBalances[player][token] += payout;
-
-            stats.totalWins++;
-        } else {
-            // House takes the net bet
-            houseLiquidity[token] += netBet;
-            stats.totalLosses++;
+        // Refund excess ETH
+        if (msg.value > entropyFee) {
+            (bool success, ) = msg.sender.call{value: msg.value - entropyFee}("");
+            require(success, "Refund failed");
         }
-
-        // Clear pending roll
-        delete pendingRolls[requestId];
-
-        emit RollSettled(requestId, player, die1, die2, won, payout);
     }
 
     // ============ Session Tracking ============
@@ -327,12 +346,9 @@ contract SevenEleven is VRFConsumerBaseV2Plus, ReentrancyGuard {
         int24 arithmeticMeanTick = int24(tickCumulativeDelta / int56(uint56(TWAP_PERIOD)));
 
         // Convert tick to sqrtPriceX96
-        // price = 1.0001^tick
-        // sqrtPriceX96 = sqrt(price) * 2^96
         uint160 sqrtPriceX96 = getSqrtRatioAtTick(arithmeticMeanTick);
 
         // price = sqrtPriceX96^2 / 2^192
-        // For token0/token1, this gives price of token0 in terms of token1
         uint256 priceX192 = uint256(sqrtPriceX96) * uint256(sqrtPriceX96);
 
         if (config.isToken0) {
@@ -356,19 +372,9 @@ contract SevenEleven is VRFConsumerBaseV2Plus, ReentrancyGuard {
         TokenConfig storage config = supportedTokens[token];
         if (!config.enabled) revert TokenNotSupported();
 
-        // Get token price in ETH (Q64.96)
         uint256 tokenEthPriceX96 = getTokenEthPrice(token);
-
-        // Get ETH/USD price (8 decimals)
         uint256 ethUsdPrice = getEthUsdPrice();
-
-        // Calculate: amount * tokenEthPrice * ethUsdPrice / (10^tokenDecimals * 10^8) * 100 cents
-        // Rearranging for precision: amount * tokenEthPrice * ethUsdPrice * 100 / (10^tokenDecimals * 10^8 * 2^96)
-
         uint256 tokenDecimals = config.decimals;
-
-        // value in cents = amount * (tokenEthPriceX96 / 2^96) * (ethUsdPrice / 10^8) * 100 / 10^tokenDecimals
-        // = amount * tokenEthPriceX96 * ethUsdPrice * 100 / (2^96 * 10^8 * 10^tokenDecimals)
 
         uint256 numerator = amount * tokenEthPriceX96 * ethUsdPrice * 100;
         uint256 denominator = (uint256(1) << 96) * 1e8 * (10 ** tokenDecimals);
@@ -385,16 +391,9 @@ contract SevenEleven is VRFConsumerBaseV2Plus, ReentrancyGuard {
         TokenConfig storage config = supportedTokens[token];
         if (!config.enabled) revert TokenNotSupported();
 
-        // Get token price in ETH (Q64.96)
         uint256 tokenEthPriceX96 = getTokenEthPrice(token);
-
-        // Get ETH/USD price (8 decimals)
         uint256 ethUsdPrice = getEthUsdPrice();
-
         uint256 tokenDecimals = config.decimals;
-
-        // We want: amount * tokenEthPrice * ethUsdPrice = BET_USD_CENTS * 10^tokenDecimals * 10^8 / 100
-        // amount = BET_USD_CENTS * 10^tokenDecimals * 10^8 * 2^96 / (100 * tokenEthPriceX96 * ethUsdPrice)
 
         uint256 numerator = BET_USD_CENTS * (10 ** tokenDecimals) * 1e8 * (uint256(1) << 96);
         uint256 denominator = 100 * tokenEthPriceX96 * ethUsdPrice;
@@ -408,7 +407,6 @@ contract SevenEleven is VRFConsumerBaseV2Plus, ReentrancyGuard {
      * @return amount The minimum deposit amount
      */
     function getMinDeposit(address token) public view returns (uint256 amount) {
-        // MIN_DEPOSIT_CENTS / BET_USD_CENTS * getBetAmount(token)
         return (getBetAmount(token) * MIN_DEPOSIT_CENTS) / BET_USD_CENTS;
     }
 
@@ -562,4 +560,7 @@ contract SevenEleven is VRFConsumerBaseV2Plus, ReentrancyGuard {
 
         sqrtPriceX96 = uint160((ratio >> 32) + (ratio % (1 << 32) == 0 ? 0 : 1));
     }
+
+    // Allow contract to receive ETH for refunds
+    receive() external payable {}
 }

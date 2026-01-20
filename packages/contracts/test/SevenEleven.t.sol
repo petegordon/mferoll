@@ -6,7 +6,7 @@ import {SevenEleven} from "../src/SevenEleven.sol";
 import {ERC20Mock} from "./mocks/ERC20Mock.sol";
 import {MockUniswapV3Pool} from "./mocks/MockUniswapV3Pool.sol";
 import {MockChainlinkAggregator} from "./mocks/MockChainlinkAggregator.sol";
-import {VRFCoordinatorV2_5Mock} from "@chainlink/contracts/src/v0.8/vrf/mocks/VRFCoordinatorV2_5Mock.sol";
+import {MockEntropy} from "./mocks/MockEntropy.sol";
 
 contract SevenElevenTest is Test {
     SevenEleven public sevenEleven;
@@ -15,32 +15,22 @@ contract SevenElevenTest is Test {
     ERC20Mock public weth;
     MockUniswapV3Pool public mferPool;
     MockChainlinkAggregator public ethUsdFeed;
-    VRFCoordinatorV2_5Mock public vrfCoordinator;
+    MockEntropy public entropy;
 
     address public owner = address(1);
     address public player = address(2);
     address public feeRecipient = address(3);
 
-    uint256 public subscriptionId;
-    bytes32 public keyHash = keccak256("keyHash");
-
     uint256 public constant INITIAL_BALANCE = 100000e18;
     uint256 public constant HOUSE_LIQUIDITY = 1000000e18;
+    uint256 public constant ENTROPY_FEE = 0.001 ether;
 
     // ETH price: $2000 (8 decimals)
     int256 public constant ETH_USD_PRICE = 2000e8;
 
     function setUp() public {
-        // Deploy mock VRF coordinator
-        vrfCoordinator = new VRFCoordinatorV2_5Mock(
-            0.1 ether,
-            1e9,
-            1e18
-        );
-
-        // Create subscription
-        subscriptionId = vrfCoordinator.createSubscription();
-        vrfCoordinator.fundSubscription(subscriptionId, 100 ether);
+        // Deploy mock Entropy
+        entropy = new MockEntropy();
 
         // Deploy mock tokens
         weth = new ERC20Mock("Wrapped Ether", "WETH", 18);
@@ -54,26 +44,18 @@ contract SevenElevenTest is Test {
         mferPool = new MockUniswapV3Pool(address(weth), address(mferToken));
 
         // Set tick cumulatives to simulate a price of ~0.0001 ETH per MFER ($0.20 at $2000 ETH)
-        // tick = log(price) / log(1.0001)
-        // For price 0.0001: tick ≈ -92103
-        // Over 1800 seconds: tickCumulative delta = tick * 1800 = -165785400
         int56 tickCumulative0 = 0;
-        int56 tickCumulative1 = -165785400; // Represents -92103 tick over 1800 seconds
+        int56 tickCumulative1 = -165785400;
         mferPool.setTickCumulatives(tickCumulative0, tickCumulative1);
 
-        // Deploy SevenEleven contract
+        // Deploy SevenEleven contract with Pyth Entropy
         vm.prank(owner);
         sevenEleven = new SevenEleven(
-            address(vrfCoordinator),
-            subscriptionId,
-            keyHash,
+            address(entropy),
             feeRecipient,
             address(ethUsdFeed),
             address(weth)
         );
-
-        // Add consumer to VRF subscription
-        vrfCoordinator.addConsumer(subscriptionId, address(sevenEleven));
 
         // Add MFER token with its pool
         vm.prank(owner);
@@ -92,6 +74,31 @@ contract SevenElevenTest is Test {
         // Approve tokens for player
         vm.prank(player);
         mferToken.approve(address(sevenEleven), type(uint256).max);
+
+        // Give player some ETH for entropy fees
+        vm.deal(player, 10 ether);
+    }
+
+    // ============ Helper Functions ============
+
+    /**
+     * @notice Simulates Pyth Entropy fulfillment
+     * @param sequenceNumber The sequence number to fulfill
+     * @param randomness The random bytes32 value
+     */
+    function _fulfillPythEntropy(uint64 sequenceNumber, bytes32 randomness) internal {
+        entropy.fulfillRandomness(sequenceNumber, randomness);
+    }
+
+    /**
+     * @notice Creates a random bytes32 that will produce specific dice results
+     * @param die1 The desired first die value (1-6)
+     * @param die2 The desired second die value (1-6)
+     */
+    function _createRandomnessForDice(uint8 die1, uint8 die2) internal pure returns (bytes32) {
+        uint256 low = uint256(die1 - 1);
+        uint256 high = uint256(die2 - 1) << 128;
+        return bytes32(low | high);
     }
 
     // ============ Deposit Tests ============
@@ -107,7 +114,7 @@ contract SevenElevenTest is Test {
     }
 
     function test_RevertWhen_DepositBelowMinimum() public {
-        uint256 tooSmall = 1e15; // Very small amount
+        uint256 tooSmall = 1e15;
 
         vm.prank(player);
         vm.expectRevert(SevenEleven.InsufficientDeposit.selector);
@@ -167,15 +174,14 @@ contract SevenElevenTest is Test {
         sevenEleven.deposit(address(mferToken), depositAmount);
 
         uint256 balanceBefore = sevenEleven.getBalance(player, address(mferToken));
-        uint256 requestId = sevenEleven.roll(address(mferToken));
+        uint64 sequenceNumber = sevenEleven.roll{value: ENTROPY_FEE}(address(mferToken));
         uint256 balanceAfter = sevenEleven.getBalance(player, address(mferToken));
         vm.stopPrank();
 
-        assertTrue(requestId > 0, "Request ID should be non-zero");
         assertTrue(balanceAfter < balanceBefore, "Balance should decrease after roll");
 
         // Check pending roll stored
-        (address pendingPlayer, address token, uint256 betAmount, uint256 feeAmount) = sevenEleven.pendingRolls(requestId);
+        (address pendingPlayer, address token, uint256 betAmount, uint256 feeAmount) = sevenEleven.pendingRolls(sequenceNumber);
         assertEq(pendingPlayer, player);
         assertEq(token, address(mferToken));
         assertTrue(betAmount > 0);
@@ -188,7 +194,7 @@ contract SevenElevenTest is Test {
 
         vm.startPrank(player);
         sevenEleven.deposit(address(mferToken), depositAmount);
-        sevenEleven.roll(address(mferToken));
+        sevenEleven.roll{value: ENTROPY_FEE}(address(mferToken));
         vm.stopPrank();
 
         uint256 feeRecipientBalanceAfter = mferToken.balanceOf(feeRecipient);
@@ -196,16 +202,26 @@ contract SevenElevenTest is Test {
     }
 
     function test_RevertWhen_RollInsufficientBalance() public {
-        // Don't deposit anything
         vm.prank(player);
         vm.expectRevert(SevenEleven.InsufficientBalance.selector);
-        sevenEleven.roll(address(mferToken));
+        sevenEleven.roll{value: ENTROPY_FEE}(address(mferToken));
     }
 
     function test_RevertWhen_RollUnsupportedToken() public {
         vm.prank(player);
         vm.expectRevert(SevenEleven.TokenNotSupported.selector);
-        sevenEleven.roll(address(drbToken));
+        sevenEleven.roll{value: ENTROPY_FEE}(address(drbToken));
+    }
+
+    function test_RevertWhen_RollInsufficientEntropyFee() public {
+        uint256 depositAmount = 10000e18;
+
+        vm.startPrank(player);
+        sevenEleven.deposit(address(mferToken), depositAmount);
+
+        vm.expectRevert(SevenEleven.InsufficientFee.selector);
+        sevenEleven.roll{value: 0}(address(mferToken));
+        vm.stopPrank();
     }
 
     // ============ Settlement Tests ============
@@ -215,21 +231,14 @@ contract SevenElevenTest is Test {
 
         vm.startPrank(player);
         sevenEleven.deposit(address(mferToken), depositAmount);
-        uint256 requestId = sevenEleven.roll(address(mferToken));
+        uint64 sequenceNumber = sevenEleven.roll{value: ENTROPY_FEE}(address(mferToken));
         vm.stopPrank();
 
         uint256 balanceBeforeSettle = sevenEleven.getBalance(player, address(mferToken));
 
-        // Simulate VRF response with dice that sum to 7 (3 + 4)
-        uint256[] memory randomWords = new uint256[](2);
-        randomWords[0] = 2; // die1 = 3
-        randomWords[1] = 3; // die2 = 4
-
-        vrfCoordinator.fulfillRandomWordsWithOverride(
-            requestId,
-            address(sevenEleven),
-            randomWords
-        );
+        // Create randomness that produces dice sum of 7 (3 + 4)
+        bytes32 randomness = _createRandomnessForDice(3, 4);
+        _fulfillPythEntropy(sequenceNumber, randomness);
 
         uint256 balanceAfterSettle = sevenEleven.getBalance(player, address(mferToken));
 
@@ -246,21 +255,14 @@ contract SevenElevenTest is Test {
 
         vm.startPrank(player);
         sevenEleven.deposit(address(mferToken), depositAmount);
-        uint256 requestId = sevenEleven.roll(address(mferToken));
+        uint64 sequenceNumber = sevenEleven.roll{value: ENTROPY_FEE}(address(mferToken));
         vm.stopPrank();
 
         uint256 balanceBeforeSettle = sevenEleven.getBalance(player, address(mferToken));
 
-        // Simulate VRF response with dice that sum to 11 (5 + 6)
-        uint256[] memory randomWords = new uint256[](2);
-        randomWords[0] = 4; // die1 = 5
-        randomWords[1] = 5; // die2 = 6
-
-        vrfCoordinator.fulfillRandomWordsWithOverride(
-            requestId,
-            address(sevenEleven),
-            randomWords
-        );
+        // Create randomness that produces dice sum of 11 (5 + 6)
+        bytes32 randomness = _createRandomnessForDice(5, 6);
+        _fulfillPythEntropy(sequenceNumber, randomness);
 
         uint256 balanceAfterSettle = sevenEleven.getBalance(player, address(mferToken));
 
@@ -275,21 +277,14 @@ contract SevenElevenTest is Test {
 
         vm.startPrank(player);
         sevenEleven.deposit(address(mferToken), depositAmount);
-        uint256 requestId = sevenEleven.roll(address(mferToken));
+        uint64 sequenceNumber = sevenEleven.roll{value: ENTROPY_FEE}(address(mferToken));
         vm.stopPrank();
 
         uint256 balanceBeforeSettle = sevenEleven.getBalance(player, address(mferToken));
 
-        // Simulate VRF response with dice that sum to 6 (2 + 4)
-        uint256[] memory randomWords = new uint256[](2);
-        randomWords[0] = 1; // die1 = 2
-        randomWords[1] = 3; // die2 = 4
-
-        vrfCoordinator.fulfillRandomWordsWithOverride(
-            requestId,
-            address(sevenEleven),
-            randomWords
-        );
+        // Create randomness that produces dice sum of 6 (2 + 4)
+        bytes32 randomness = _createRandomnessForDice(2, 4);
+        _fulfillPythEntropy(sequenceNumber, randomness);
 
         uint256 balanceAfterSettle = sevenEleven.getBalance(player, address(mferToken));
 
@@ -305,24 +300,17 @@ contract SevenElevenTest is Test {
 
         vm.startPrank(player);
         sevenEleven.deposit(address(mferToken), depositAmount);
-        uint256 requestId = sevenEleven.roll(address(mferToken));
+        uint64 sequenceNumber = sevenEleven.roll{value: ENTROPY_FEE}(address(mferToken));
         vm.stopPrank();
 
         // Get the bet amount (net of fee)
-        (, , uint256 netBetAmount, ) = sevenEleven.pendingRolls(requestId);
+        (, , uint256 netBetAmount, ) = sevenEleven.pendingRolls(sequenceNumber);
 
         uint256 balanceBeforeSettle = sevenEleven.getBalance(player, address(mferToken));
 
-        // Win on 7
-        uint256[] memory randomWords = new uint256[](2);
-        randomWords[0] = 2; // die1 = 3
-        randomWords[1] = 3; // die2 = 4
-
-        vrfCoordinator.fulfillRandomWordsWithOverride(
-            requestId,
-            address(sevenEleven),
-            randomWords
-        );
+        // Win on 7 (3 + 4)
+        bytes32 randomness = _createRandomnessForDice(3, 4);
+        _fulfillPythEntropy(sequenceNumber, randomness);
 
         uint256 balanceAfterSettle = sevenEleven.getBalance(player, address(mferToken));
         uint256 payout = balanceAfterSettle - balanceBeforeSettle;
@@ -338,7 +326,7 @@ contract SevenElevenTest is Test {
 
         vm.startPrank(player);
         sevenEleven.deposit(address(mferToken), depositAmount);
-        sevenEleven.roll(address(mferToken));
+        sevenEleven.roll{value: ENTROPY_FEE}(address(mferToken));
         vm.stopPrank();
 
         SevenEleven.PlayerStats memory stats = sevenEleven.getPlayerStats(player);
@@ -352,7 +340,7 @@ contract SevenElevenTest is Test {
 
         vm.startPrank(player);
         sevenEleven.deposit(address(mferToken), depositAmount);
-        sevenEleven.roll(address(mferToken));
+        sevenEleven.roll{value: ENTROPY_FEE}(address(mferToken));
         vm.stopPrank();
 
         // Wait more than SESSION_GAP (1 hour)
@@ -362,7 +350,7 @@ contract SevenElevenTest is Test {
         ethUsdFeed.setPrice(ETH_USD_PRICE);
 
         vm.startPrank(player);
-        sevenEleven.roll(address(mferToken));
+        sevenEleven.roll{value: ENTROPY_FEE}(address(mferToken));
         vm.stopPrank();
 
         SevenEleven.PlayerStats memory stats = sevenEleven.getPlayerStats(player);
@@ -374,12 +362,12 @@ contract SevenElevenTest is Test {
 
         vm.startPrank(player);
         sevenEleven.deposit(address(mferToken), depositAmount);
-        sevenEleven.roll(address(mferToken));
+        sevenEleven.roll{value: ENTROPY_FEE}(address(mferToken));
 
         // Wait less than SESSION_GAP
         vm.warp(block.timestamp + 30 minutes);
 
-        sevenEleven.roll(address(mferToken));
+        sevenEleven.roll{value: ENTROPY_FEE}(address(mferToken));
         vm.stopPrank();
 
         SevenEleven.PlayerStats memory stats = sevenEleven.getPlayerStats(player);
@@ -453,7 +441,7 @@ contract SevenElevenTest is Test {
         sevenEleven.deposit(address(mferToken), depositAmount);
 
         vm.expectRevert(SevenEleven.InsufficientHouseLiquidity.selector);
-        sevenEleven.roll(address(mferToken));
+        sevenEleven.roll{value: ENTROPY_FEE}(address(mferToken));
         vm.stopPrank();
     }
 
@@ -478,11 +466,17 @@ contract SevenElevenTest is Test {
         assertEq(minDeposit, (betAmount * 200) / 25);
     }
 
+    function test_GetEntropyFee() public view {
+        uint256 fee = sevenEleven.getEntropyFee();
+        assertEq(fee, ENTROPY_FEE);
+    }
+
     // ============ Fuzz Tests ============
 
-    function testFuzz_DiceResults(uint256 word1, uint256 word2) public pure {
-        uint8 die1 = uint8((word1 % 6) + 1);
-        uint8 die2 = uint8((word2 % 6) + 1);
+    function testFuzz_DiceResultsFromBytes32(bytes32 randomness) public pure {
+        uint256 rand = uint256(randomness);
+        uint8 die1 = uint8((rand % 6) + 1);
+        uint8 die2 = uint8(((rand >> 128) % 6) + 1);
 
         assertTrue(die1 >= 1 && die1 <= 6, "Die 1 out of range");
         assertTrue(die2 >= 1 && die2 <= 6, "Die 2 out of range");
@@ -490,12 +484,8 @@ contract SevenElevenTest is Test {
         uint8 sum = die1 + die2;
         assertTrue(sum >= 2 && sum <= 12, "Sum out of range");
 
-        // 7 or 11 wins
         bool wins = (sum == 7 || sum == 11);
 
-        // There are 8 winning combinations out of 36: 6 for sum 7, 2 for sum 11
-        // sum = 7: (1,6), (2,5), (3,4), (4,3), (5,2), (6,1)
-        // sum = 11: (5,6), (6,5)
         if (sum == 7 || sum == 11) {
             assertTrue(wins);
         } else {
@@ -503,17 +493,16 @@ contract SevenElevenTest is Test {
         }
     }
 
-    function testFuzz_WinProbability(uint256 seed) public {
-        // Test that win probability is roughly 8/36 = 22.22%
+    function testFuzz_WinProbability(uint256 seed) public pure {
         uint256 wins = 0;
         uint256 samples = 1000;
 
         for (uint256 i = 0; i < samples; i++) {
-            uint256 word1 = uint256(keccak256(abi.encode(seed, i, 0)));
-            uint256 word2 = uint256(keccak256(abi.encode(seed, i, 1)));
+            bytes32 randomness = keccak256(abi.encode(seed, i));
+            uint256 rand = uint256(randomness);
 
-            uint8 die1 = uint8((word1 % 6) + 1);
-            uint8 die2 = uint8((word2 % 6) + 1);
+            uint8 die1 = uint8((rand % 6) + 1);
+            uint8 die2 = uint8(((rand >> 128) % 6) + 1);
             uint8 sum = die1 + die2;
 
             if (sum == 7 || sum == 11) {

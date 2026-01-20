@@ -5,14 +5,12 @@ import {Script, console} from "forge-std/Script.sol";
 import {SevenEleven} from "../src/SevenEleven.sol";
 
 contract DeploySevenElevenScript is Script {
-    // Base Sepolia configuration
-    address constant VRF_COORDINATOR_BASE_SEPOLIA = 0x5C210eF41CD1a72de73bF76eC39637bB0d3d7BEE;
-    bytes32 constant KEY_HASH_BASE_SEPOLIA = 0x9e1344a1247c8a1785d0a4681a27152bffdb43666ae5bf7d14d24a5efd44bf71;
-    address constant ETH_USD_FEED_SEPOLIA = 0x4aDC67696bA383F43DD60A9e78F2C97Fbbfc7cb1; // Base Sepolia ETH/USD
+    // Pyth Entropy addresses
+    address constant PYTH_ENTROPY_BASE_MAINNET = 0x6E7D74FA7d5c90FEF9F0512987605a6d546181Bb;
+    address constant PYTH_ENTROPY_BASE_SEPOLIA = 0x41c9e39574F40Ad34c79f1C99B66A45eFB830d4c;
 
-    // Base Mainnet configuration
-    address constant VRF_COORDINATOR_BASE = 0xd5D517aBE5cF79B7e95eC98dB0f0277788aFF634;
-    bytes32 constant KEY_HASH_BASE = 0x00b81b5a9c3955d5dc54e7424165caaa91e20df387a3d019a8c9fd43f8ec09bc;
+    // Chainlink ETH/USD Price Feeds
+    address constant ETH_USD_FEED_SEPOLIA = 0x4aDC67696bA383F43DD60A9e78F2C97Fbbfc7cb1; // Base Sepolia ETH/USD
     address constant ETH_USD_FEED_BASE = 0x71041dddad3595F9CEd3DcCFBe3D1F4b0a16Bb70; // Base Mainnet ETH/USD
 
     // Token addresses (Base Mainnet)
@@ -27,28 +25,18 @@ contract DeploySevenElevenScript is Script {
     address constant WETH_BASE = 0x4200000000000000000000000000000000000006;
     address constant WETH_SEPOLIA = 0x4200000000000000000000000000000000000006;
 
-    // Uniswap V3 pools on Base Mainnet (need to be verified/updated)
-    // These are placeholder addresses - actual pool addresses need to be found on Base
-    address constant MFER_WETH_POOL = address(0); // TODO: Find actual pool
-    address constant DRB_WETH_POOL = address(0);  // TODO: Find actual pool
-    address constant BANKR_WETH_POOL = address(0); // TODO: Find actual pool
-
     function run() external {
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
-        uint256 subscriptionId = vm.envUint("VRF_SUBSCRIPTION_ID");
         bool isMainnet = vm.envBool("IS_MAINNET");
 
-        address vrfCoordinator = isMainnet ? VRF_COORDINATOR_BASE : VRF_COORDINATOR_BASE_SEPOLIA;
-        bytes32 keyHash = isMainnet ? KEY_HASH_BASE : KEY_HASH_BASE_SEPOLIA;
+        address pythEntropy = isMainnet ? PYTH_ENTROPY_BASE_MAINNET : PYTH_ENTROPY_BASE_SEPOLIA;
         address ethUsdFeed = isMainnet ? ETH_USD_FEED_BASE : ETH_USD_FEED_SEPOLIA;
         address weth = isMainnet ? WETH_BASE : WETH_SEPOLIA;
 
         vm.startBroadcast(deployerPrivateKey);
 
         SevenEleven sevenEleven = new SevenEleven(
-            vrfCoordinator,
-            subscriptionId,
-            keyHash,
+            pythEntropy,
             FEE_RECIPIENT,
             ethUsdFeed,
             weth
@@ -56,6 +44,7 @@ contract DeploySevenElevenScript is Script {
 
         console.log("SevenEleven deployed at:", address(sevenEleven));
         console.log("Network:", isMainnet ? "Base Mainnet" : "Base Sepolia");
+        console.log("Pyth Entropy:", pythEntropy);
         console.log("Fee Recipient (drb.eth):", FEE_RECIPIENT);
 
         // Note: After deployment, call addToken() for each supported token with their Uniswap V3 pool addresses
@@ -80,7 +69,7 @@ contract DeploySevenElevenScript is Script {
 
         vm.startBroadcast(deployerPrivateKey);
 
-        SevenEleven sevenEleven = SevenEleven(sevenElevenAddress);
+        SevenEleven sevenEleven = SevenEleven(payable(sevenElevenAddress));
 
         if (mferPool != address(0)) {
             sevenEleven.addToken(MFERCOIN, mferPool);
@@ -114,7 +103,7 @@ contract AddTokensScript is Script {
 
         vm.startBroadcast(deployerPrivateKey);
 
-        SevenEleven sevenEleven = SevenEleven(sevenElevenAddress);
+        SevenEleven sevenEleven = SevenEleven(payable(sevenElevenAddress));
 
         if (mferPool != address(0) && mfercoin != address(0)) {
             sevenEleven.addToken(mfercoin, mferPool);

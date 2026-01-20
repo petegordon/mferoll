@@ -7,3 +7,9 @@
 [submodule "packages/contracts/lib/chainlink"]
 	path = packages/contracts/lib/chainlink
 	url = https://github.com/smartcontractkit/chainlink-brownie-contracts
+[submodule "packages/contracts/lib/pyth-sdk-solidity"]
+	path = packages/contracts/lib/pyth-sdk-solidity
+	url = https://github.com/pyth-network/pyth-sdk-solidity
+[submodule "packages/contracts/lib/pyth-crosschain"]
+	path = packages/contracts/lib/pyth-crosschain
+	url = https://github.com/pyth-network/pyth-crosschain
