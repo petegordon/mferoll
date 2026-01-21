@@ -235,17 +235,18 @@ contract SevenEleven is IEntropyConsumer, ReentrancyGuard, Ownable {
     }
 
     /**
-     * @notice Roll the dice - costs $0.25 worth of tokens + Pyth Entropy fee in ETH
+     * @notice Roll the dice - costs $0.25 worth of tokens
+     * @dev House pays the Pyth Entropy fee from contract ETH balance
      * @param token The token to bet with
      * @return sequenceNumber The Pyth Entropy sequence number
      */
-    function roll(address token) external payable nonReentrant returns (uint64 sequenceNumber) {
+    function roll(address token) external nonReentrant returns (uint64 sequenceNumber) {
         TokenConfig storage config = supportedTokens[token];
         if (!config.enabled) revert TokenNotSupported();
 
-        // Check Pyth Entropy fee
+        // Check contract has enough ETH for Pyth Entropy fee
         uint256 entropyFee = entropy.getFeeV2();
-        if (msg.value < entropyFee) revert InsufficientFee();
+        if (address(this).balance < entropyFee) revert InsufficientFee();
 
         uint256 betAmount = getBetAmount(token);
         uint256 feeAmount = (betAmount * FEE_BPS) / BPS_DENOMINATOR;
@@ -269,7 +270,7 @@ contract SevenEleven is IEntropyConsumer, ReentrancyGuard, Ownable {
         // Update session tracking
         _updateSession(msg.sender);
 
-        // Request randomness from Pyth Entropy
+        // Request randomness from Pyth Entropy (house pays the fee)
         sequenceNumber = entropy.requestV2{value: entropyFee}();
 
         pendingRolls[sequenceNumber] = PendingRoll({
@@ -285,12 +286,6 @@ contract SevenEleven is IEntropyConsumer, ReentrancyGuard, Ownable {
 
         emit RollRequested(sequenceNumber, msg.sender, token, betAmount);
         emit FeePaid(msg.sender, token, feeAmount);
-
-        // Refund excess ETH
-        if (msg.value > entropyFee) {
-            (bool success, ) = msg.sender.call{value: msg.value - entropyFee}("");
-            require(success, "Refund failed");
-        }
     }
 
     // ============ Session Tracking ============
@@ -331,6 +326,11 @@ contract SevenEleven is IEntropyConsumer, ReentrancyGuard, Ownable {
      * @return priceX96 Token price in ETH (Q64.96 format)
      */
     function getTokenEthPrice(address token) public view returns (uint256 priceX96) {
+        // WETH is always 1:1 with ETH
+        if (token == WETH) {
+            return uint256(1) << 96; // 1.0 in Q64.96 format
+        }
+
         TokenConfig storage config = supportedTokens[token];
         if (config.uniswapPool == address(0)) revert PoolNotFound();
 
@@ -362,6 +362,9 @@ contract SevenEleven is IEntropyConsumer, ReentrancyGuard, Ownable {
         }
     }
 
+    // Stablecoin addresses (1 token = $1)
+    mapping(address => bool) public isStablecoin;
+
     /**
      * @notice Get token value in USD cents
      * @param token The token address
@@ -371,6 +374,11 @@ contract SevenEleven is IEntropyConsumer, ReentrancyGuard, Ownable {
     function getTokenValueInCents(address token, uint256 amount) public view returns (uint256 cents) {
         TokenConfig storage config = supportedTokens[token];
         if (!config.enabled) revert TokenNotSupported();
+
+        // Stablecoins: 1 token = $1 = 100 cents
+        if (isStablecoin[token]) {
+            return (amount * 100) / (10 ** config.decimals);
+        }
 
         uint256 tokenEthPriceX96 = getTokenEthPrice(token);
         uint256 ethUsdPrice = getEthUsdPrice();
@@ -390,6 +398,11 @@ contract SevenEleven is IEntropyConsumer, ReentrancyGuard, Ownable {
     function getBetAmount(address token) public view returns (uint256 amount) {
         TokenConfig storage config = supportedTokens[token];
         if (!config.enabled) revert TokenNotSupported();
+
+        // Stablecoins: 1 token = $1, so $0.25 bet = 0.25 tokens
+        if (isStablecoin[token]) {
+            return (BET_USD_CENTS * (10 ** config.decimals)) / 100;
+        }
 
         uint256 tokenEthPriceX96 = getTokenEthPrice(token);
         uint256 ethUsdPrice = getEthUsdPrice();
@@ -443,12 +456,56 @@ contract SevenEleven is IEntropyConsumer, ReentrancyGuard, Ownable {
     // ============ Admin Functions ============
 
     /**
+     * @notice Add WETH as a supported token (no pool needed, 1:1 with ETH)
+     */
+    function addWeth() external onlyOwner {
+        require(!supportedTokens[WETH].enabled, "WETH already added");
+
+        supportedTokens[WETH] = TokenConfig({
+            token: WETH,
+            uniswapPool: address(0), // Not needed for WETH
+            decimals: 18,
+            enabled: true,
+            isToken0: false
+        });
+
+        tokenList.push(WETH);
+
+        emit TokenAdded(WETH, address(0));
+    }
+
+    /**
+     * @notice Add a stablecoin (1 token = $1, no price oracle needed)
+     * @param token The stablecoin address
+     */
+    function addStablecoin(address token) external onlyOwner {
+        require(token != address(0), "Invalid token");
+        require(!supportedTokens[token].enabled, "Token already added");
+
+        uint8 decimals = IERC20Metadata(token).decimals();
+
+        supportedTokens[token] = TokenConfig({
+            token: token,
+            uniswapPool: address(0), // Not needed for stablecoins
+            decimals: decimals,
+            enabled: true,
+            isToken0: false
+        });
+
+        isStablecoin[token] = true;
+        tokenList.push(token);
+
+        emit TokenAdded(token, address(0));
+    }
+
+    /**
      * @notice Add a supported token
      * @param token The token address
      * @param uniswapPool The Uniswap V3 pool for token/WETH
      */
     function addToken(address token, address uniswapPool) external onlyOwner {
         require(token != address(0), "Invalid token");
+        require(token != WETH, "Use addWeth() for WETH");
         require(uniswapPool != address(0), "Invalid pool");
         require(!supportedTokens[token].enabled, "Token already added");
 
@@ -561,6 +618,31 @@ contract SevenEleven is IEntropyConsumer, ReentrancyGuard, Ownable {
         sqrtPriceX96 = uint160((ratio >> 32) + (ratio % (1 << 32) == 0 ? 0 : 1));
     }
 
-    // Allow contract to receive ETH for refunds
+    /**
+     * @notice Deposit ETH to cover Pyth Entropy fees
+     * @dev Anyone can deposit, but typically the house/owner does this
+     */
+    function depositEntropyFunds() external payable {
+        // Just receive ETH - no logic needed
+    }
+
+    /**
+     * @notice Withdraw ETH from contract (owner only)
+     * @param amount Amount of ETH to withdraw
+     */
+    function withdrawEntropyFunds(uint256 amount) external onlyOwner {
+        require(address(this).balance >= amount, "Insufficient ETH balance");
+        (bool success, ) = msg.sender.call{value: amount}("");
+        require(success, "ETH transfer failed");
+    }
+
+    /**
+     * @notice Get contract ETH balance for entropy fees
+     */
+    function getEntropyBalance() external view returns (uint256) {
+        return address(this).balance;
+    }
+
+    // Allow contract to receive ETH
     receive() external payable {}
 }

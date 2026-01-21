@@ -1,8 +1,9 @@
 'use client';
 
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import {
   useAccount,
+  useChainId,
   useReadContract,
   useWriteContract,
   useWaitForTransactionReceipt,
@@ -11,60 +12,99 @@ import {
 import { parseUnits, formatUnits } from 'viem';
 import {
   SEVEN_ELEVEN_ABI,
-  SEVEN_ELEVEN_ADDRESS,
   ERC20_ABI,
-  TOKEN_ADDRESSES,
+  CHAIN_ID,
+  TOKEN_ADDRESSES_BY_CHAIN,
+  SEVEN_ELEVEN_ADDRESS_BY_CHAIN,
+  getSevenElevenAddress,
   SEVEN_ELEVEN_CONSTANTS,
   getTokenIconUrl,
   type PlayerStats,
 } from '@/lib/contracts';
 
-// Supported tokens for the 7/11 game
-// Using CoinGecko URLs for MFER/DRB (same as Uniswap), Trust Wallet for standard tokens
-export const SUPPORTED_TOKENS = [
+// Token configuration type
+export interface SupportedToken {
+  address: `0x${string}`;
+  symbol: string;
+  name: string;
+  decimals: number;
+  icon: string;
+}
+
+// Mainnet tokens
+const MAINNET_TOKENS: SupportedToken[] = [
   {
-    address: TOKEN_ADDRESSES.MFERCOIN,
+    address: TOKEN_ADDRESSES_BY_CHAIN[CHAIN_ID.BASE_MAINNET].MFERCOIN,
     symbol: 'MFER',
     name: 'mfercoin',
     decimals: 18,
     icon: 'https://coin-images.coingecko.com/coins/images/36550/small/mfercoin-logo.png',
   },
   {
-    address: TOKEN_ADDRESSES.DRB,
+    address: TOKEN_ADDRESSES_BY_CHAIN[CHAIN_ID.BASE_MAINNET].DRB,
     symbol: 'DRB',
     name: 'drb',
     decimals: 18,
     icon: 'https://coin-images.coingecko.com/coins/images/54784/small/1000143570.jpg',
   },
   {
-    address: TOKEN_ADDRESSES.BANKR,
+    address: TOKEN_ADDRESSES_BY_CHAIN[CHAIN_ID.BASE_MAINNET].BANKR,
     symbol: 'BANKR',
     name: 'bankr',
     decimals: 18,
-    icon: getTokenIconUrl(TOKEN_ADDRESSES.BANKR),
+    icon: getTokenIconUrl(TOKEN_ADDRESSES_BY_CHAIN[CHAIN_ID.BASE_MAINNET].BANKR),
   },
   {
-    address: TOKEN_ADDRESSES.USDC,
+    address: TOKEN_ADDRESSES_BY_CHAIN[CHAIN_ID.BASE_MAINNET].USDC,
     symbol: 'USDC',
     name: 'USD Coin',
     decimals: 6,
-    icon: getTokenIconUrl(TOKEN_ADDRESSES.USDC),
+    icon: getTokenIconUrl(TOKEN_ADDRESSES_BY_CHAIN[CHAIN_ID.BASE_MAINNET].USDC),
   },
   {
-    address: TOKEN_ADDRESSES.WETH,
+    address: TOKEN_ADDRESSES_BY_CHAIN[CHAIN_ID.BASE_MAINNET].WETH,
     symbol: 'WETH',
     name: 'Wrapped Ether',
     decimals: 18,
-    icon: getTokenIconUrl(TOKEN_ADDRESSES.WETH),
+    icon: getTokenIconUrl(TOKEN_ADDRESSES_BY_CHAIN[CHAIN_ID.BASE_MAINNET].WETH),
   },
-] as const;
+];
 
-export type SupportedToken = (typeof SUPPORTED_TOKENS)[number];
+// Testnet tokens (Base Sepolia)
+const TESTNET_TOKENS: SupportedToken[] = [
+  {
+    address: TOKEN_ADDRESSES_BY_CHAIN[CHAIN_ID.BASE_SEPOLIA].USDC,
+    symbol: 'USDC',
+    name: 'USD Coin (Testnet)',
+    decimals: 6,
+    icon: 'https://assets-cdn.trustwallet.com/blockchains/base/assets/0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913/logo.png',
+  },
+  {
+    address: TOKEN_ADDRESSES_BY_CHAIN[CHAIN_ID.BASE_SEPOLIA].WETH,
+    symbol: 'WETH',
+    name: 'Wrapped Ether (Testnet)',
+    decimals: 18,
+    icon: 'https://assets-cdn.trustwallet.com/blockchains/base/assets/0x4200000000000000000000000000000000000006/logo.png',
+  },
+];
+
+// Get tokens for a specific chain
+export function getTokensForChain(chainId: number): SupportedToken[] {
+  if (chainId === CHAIN_ID.BASE_SEPOLIA) {
+    return TESTNET_TOKENS;
+  }
+  return MAINNET_TOKENS;
+}
+
+// Legacy export for backwards compatibility
+export const SUPPORTED_TOKENS = MAINNET_TOKENS;
 
 interface UseSevenElevenReturn {
   // State
   isConnected: boolean;
   address: `0x${string}` | undefined;
+  chainId: number;
+  contractAddress: `0x${string}`;
 
   // Player balance in contract
   balance: bigint | undefined;
@@ -82,6 +122,10 @@ interface UseSevenElevenReturn {
   betAmountFormatted: string;
   minDeposit: bigint | undefined;
   minDepositFormatted: string;
+
+  // Entropy fee (for Pyth VRF)
+  entropyFee: bigint | undefined;
+  entropyFeeFormatted: string;
 
   // Token allowance
   allowance: bigint | undefined;
@@ -115,22 +159,29 @@ interface UseSevenElevenReturn {
   // Refetch
   refetchBalance: () => void;
   refetchStats: () => void;
+  refetchEntropyFee: () => void;
 }
 
 export function useSevenEleven(token: SupportedToken): UseSevenElevenReturn {
   const { address, isConnected } = useAccount();
+  const chainId = useChainId();
+
+  // Get the contract address for the current chain
+  const contractAddress = useMemo(() => {
+    return getSevenElevenAddress(chainId);
+  }, [chainId]);
 
   // Read player balance in contract
   const {
     data: balance,
     refetch: refetchBalance,
   } = useReadContract({
-    address: SEVEN_ELEVEN_ADDRESS,
+    address: contractAddress,
     abi: SEVEN_ELEVEN_ABI,
     functionName: 'getBalance',
     args: address ? [address, token.address] : undefined,
     query: {
-      enabled: isConnected && !!address,
+      enabled: isConnected && !!address && contractAddress !== '0x0000000000000000000000000000000000000000',
     },
   });
 
@@ -150,12 +201,12 @@ export function useSevenEleven(token: SupportedToken): UseSevenElevenReturn {
     data: playerStatsRaw,
     refetch: refetchStats,
   } = useReadContract({
-    address: SEVEN_ELEVEN_ADDRESS,
+    address: contractAddress,
     abi: SEVEN_ELEVEN_ABI,
     functionName: 'getPlayerStats',
     args: address ? [address] : undefined,
     query: {
-      enabled: isConnected && !!address,
+      enabled: isConnected && !!address && contractAddress !== '0x0000000000000000000000000000000000000000',
     },
   });
 
@@ -174,23 +225,33 @@ export function useSevenEleven(token: SupportedToken): UseSevenElevenReturn {
 
   // Read bet amount
   const { data: betAmount } = useReadContract({
-    address: SEVEN_ELEVEN_ADDRESS,
+    address: contractAddress,
     abi: SEVEN_ELEVEN_ABI,
     functionName: 'getBetAmount',
     args: [token.address],
     query: {
-      enabled: isConnected,
+      enabled: isConnected && contractAddress !== '0x0000000000000000000000000000000000000000',
     },
   });
 
   // Read min deposit
   const { data: minDeposit } = useReadContract({
-    address: SEVEN_ELEVEN_ADDRESS,
+    address: contractAddress,
     abi: SEVEN_ELEVEN_ABI,
     functionName: 'getMinDeposit',
     args: [token.address],
     query: {
-      enabled: isConnected,
+      enabled: isConnected && contractAddress !== '0x0000000000000000000000000000000000000000',
+    },
+  });
+
+  // Read entropy fee (required for Pyth VRF)
+  const { data: entropyFee, refetch: refetchEntropyFee } = useReadContract({
+    address: contractAddress,
+    abi: SEVEN_ELEVEN_ABI,
+    functionName: 'getEntropyFee',
+    query: {
+      enabled: isConnected && contractAddress !== '0x0000000000000000000000000000000000000000',
     },
   });
 
@@ -199,20 +260,20 @@ export function useSevenEleven(token: SupportedToken): UseSevenElevenReturn {
     address: token.address,
     abi: ERC20_ABI,
     functionName: 'allowance',
-    args: address ? [address, SEVEN_ELEVEN_ADDRESS] : undefined,
+    args: address ? [address, contractAddress] : undefined,
     query: {
-      enabled: isConnected && !!address,
+      enabled: isConnected && !!address && contractAddress !== '0x0000000000000000000000000000000000000000',
     },
   });
 
   // Read house liquidity
   const { data: houseLiquidity } = useReadContract({
-    address: SEVEN_ELEVEN_ADDRESS,
+    address: contractAddress,
     abi: SEVEN_ELEVEN_ABI,
     functionName: 'houseLiquidity',
     args: [token.address],
     query: {
-      enabled: isConnected,
+      enabled: isConnected && contractAddress !== '0x0000000000000000000000000000000000000000',
     },
   });
 
@@ -245,22 +306,49 @@ export function useSevenEleven(token: SupportedToken): UseSevenElevenReturn {
     error: rollError,
   } = useWriteContract();
 
-  // Wait for transaction confirmations
-  const { isLoading: isApproveConfirming } = useWaitForTransactionReceipt({
+  // Wait for transaction confirmations and refetch on success
+  const { isLoading: isApproveConfirming, isSuccess: isApproveSuccess } = useWaitForTransactionReceipt({
     hash: approveHash,
   });
 
-  const { isLoading: isDepositConfirming } = useWaitForTransactionReceipt({
+  const { isLoading: isDepositConfirming, isSuccess: isDepositSuccess } = useWaitForTransactionReceipt({
     hash: depositHash,
   });
 
-  const { isLoading: isWithdrawConfirming } = useWaitForTransactionReceipt({
+  const { isLoading: isWithdrawConfirming, isSuccess: isWithdrawSuccess } = useWaitForTransactionReceipt({
     hash: withdrawHash,
   });
 
-  const { isLoading: isRollConfirming } = useWaitForTransactionReceipt({
+  const { isLoading: isRollConfirming, isSuccess: isRollSuccess } = useWaitForTransactionReceipt({
     hash: rollHash,
   });
+
+  // Refetch balances when transactions confirm
+  useEffect(() => {
+    if (isApproveSuccess) {
+      refetchAllowance();
+    }
+  }, [isApproveSuccess, refetchAllowance]);
+
+  useEffect(() => {
+    if (isDepositSuccess) {
+      refetchBalance();
+      refetchAllowance();
+    }
+  }, [isDepositSuccess, refetchBalance, refetchAllowance]);
+
+  useEffect(() => {
+    if (isWithdrawSuccess) {
+      refetchBalance();
+    }
+  }, [isWithdrawSuccess, refetchBalance]);
+
+  useEffect(() => {
+    if (isRollSuccess) {
+      refetchBalance();
+      refetchStats();
+    }
+  }, [isRollSuccess, refetchBalance, refetchStats]);
 
   // Functions
   const approve = useCallback(
@@ -269,48 +357,49 @@ export function useSevenEleven(token: SupportedToken): UseSevenElevenReturn {
         address: token.address,
         abi: ERC20_ABI,
         functionName: 'approve',
-        args: [SEVEN_ELEVEN_ADDRESS, amount],
+        args: [contractAddress, amount],
       });
     },
-    [writeApprove, token.address]
+    [writeApprove, token.address, contractAddress]
   );
 
   const deposit = useCallback(
     async (amount: bigint) => {
       writeDeposit({
-        address: SEVEN_ELEVEN_ADDRESS,
+        address: contractAddress,
         abi: SEVEN_ELEVEN_ABI,
         functionName: 'deposit',
         args: [token.address, amount],
       });
     },
-    [writeDeposit, token.address]
+    [writeDeposit, token.address, contractAddress]
   );
 
   const withdraw = useCallback(
     async (amount: bigint) => {
       writeWithdraw({
-        address: SEVEN_ELEVEN_ADDRESS,
+        address: contractAddress,
         abi: SEVEN_ELEVEN_ABI,
         functionName: 'withdraw',
         args: [token.address, amount],
       });
     },
-    [writeWithdraw, token.address]
+    [writeWithdraw, token.address, contractAddress]
   );
 
+  // Roll function - house pays entropy fee, no ETH needed from user
   const roll = useCallback(async () => {
     writeRoll({
-      address: SEVEN_ELEVEN_ADDRESS,
+      address: contractAddress,
       abi: SEVEN_ELEVEN_ABI,
       functionName: 'roll',
       args: [token.address],
     });
-  }, [writeRoll, token.address]);
+  }, [writeRoll, token.address, contractAddress]);
 
   // Watch for events to trigger refetches
   useWatchContractEvent({
-    address: SEVEN_ELEVEN_ADDRESS,
+    address: contractAddress,
     abi: SEVEN_ELEVEN_ABI,
     eventName: 'Deposited',
     onLogs: () => {
@@ -320,7 +409,7 @@ export function useSevenEleven(token: SupportedToken): UseSevenElevenReturn {
   });
 
   useWatchContractEvent({
-    address: SEVEN_ELEVEN_ADDRESS,
+    address: contractAddress,
     abi: SEVEN_ELEVEN_ABI,
     eventName: 'Withdrawn',
     onLogs: () => {
@@ -328,8 +417,18 @@ export function useSevenEleven(token: SupportedToken): UseSevenElevenReturn {
     },
   });
 
+  // Refetch balance immediately when roll is requested (balance is deducted on roll, not on settle)
   useWatchContractEvent({
-    address: SEVEN_ELEVEN_ADDRESS,
+    address: contractAddress,
+    abi: SEVEN_ELEVEN_ABI,
+    eventName: 'RollRequested',
+    onLogs: () => {
+      refetchBalance();
+    },
+  });
+
+  useWatchContractEvent({
+    address: contractAddress,
     abi: SEVEN_ELEVEN_ABI,
     eventName: 'RollSettled',
     onLogs: () => {
@@ -359,6 +458,11 @@ export function useSevenEleven(token: SupportedToken): UseSevenElevenReturn {
     return formatUnits(minDeposit, token.decimals);
   }, [minDeposit, token.decimals]);
 
+  const entropyFeeFormatted = useMemo(() => {
+    if (entropyFee === undefined) return '0';
+    return formatUnits(entropyFee, 18); // ETH has 18 decimals
+  }, [entropyFee]);
+
   // Check if approval needed
   const needsApproval = useMemo(() => {
     if (allowance === undefined || minDeposit === undefined) return false;
@@ -378,6 +482,8 @@ export function useSevenEleven(token: SupportedToken): UseSevenElevenReturn {
   return {
     isConnected,
     address,
+    chainId,
+    contractAddress,
     balance,
     balanceFormatted,
     walletBalance,
@@ -387,6 +493,8 @@ export function useSevenEleven(token: SupportedToken): UseSevenElevenReturn {
     betAmountFormatted,
     minDeposit,
     minDepositFormatted,
+    entropyFee,
+    entropyFeeFormatted,
     allowance,
     needsApproval,
     houseLiquidity,
@@ -406,7 +514,14 @@ export function useSevenEleven(token: SupportedToken): UseSevenElevenReturn {
     error,
     refetchBalance,
     refetchStats,
+    refetchEntropyFee,
   };
+}
+
+// Hook to get tokens for the current chain
+export function useSupportedTokens(): SupportedToken[] {
+  const chainId = useChainId();
+  return useMemo(() => getTokensForChain(chainId), [chainId]);
 }
 
 // Helper hook for formatting token amounts

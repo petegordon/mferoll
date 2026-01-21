@@ -6,6 +6,7 @@ import { TouchToStart } from '@/components/motion/TouchToStart';
 import { useAccount } from 'wagmi';
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { SevenElevenGame } from '@/components/SevenElevenGame';
+import { useSevenEleven, useSupportedTokens } from '@/hooks/useSevenEleven';
 
 // Dynamic import for Three.js components to avoid SSR issues
 const DiceScene = dynamic(() => import('@/components/dice/DiceScene'), {
@@ -42,6 +43,23 @@ export default function Home() {
   const isRollingRef = useRef(false);
   const cooldownEndRef = useRef(0);
 
+  // Blockchain integration
+  const supportedTokens = useSupportedTokens();
+  const currentToken = supportedTokens[0] || {
+    address: '0x0' as `0x${string}`,
+    symbol: 'USDC',
+    name: 'USD Coin',
+    decimals: 6,
+    icon: '',
+  }; // Default to first token (USDC on testnet)
+  const {
+    balance,
+    betAmount,
+    roll: contractRoll,
+    isRolling: isContractRolling,
+    error: contractError,
+  } = useSevenEleven(currentToken);
+
   // Start cooldown timer (called when roll starts)
   const startCooldown = useCallback(() => {
     cooldownEndRef.current = Date.now() + ROLL_COOLDOWN_MS;
@@ -73,10 +91,34 @@ export default function Home() {
   }, []);
 
   // Handle roll - only when canRoll is true
-  const handleRoll = useCallback(() => {
-    if (!canRoll || isRollingRef.current || isRolling) {
-      console.log('Cannot roll now');
+  const handleRoll = useCallback(async () => {
+    console.log('handleRoll called', { canRoll, isRollingRef: isRollingRef.current, isRolling, isContractRolling });
+
+    if (!canRoll || isRollingRef.current || isRolling || isContractRolling) {
+      console.log('Cannot roll now - blocked by state');
       return;
+    }
+
+    // If connected, check balance and call contract
+    if (isConnected) {
+      // Check if player has enough balance
+      console.log('Balance check:', { balance: balance?.toString(), betAmount: betAmount?.toString() });
+      if (!balance || !betAmount || balance < betAmount) {
+        console.log('Insufficient balance for roll');
+        // Open menu so user can deposit
+        setMenuOpen(true);
+        return;
+      }
+
+      // Call the smart contract roll
+      console.log('Calling contract roll...');
+      try {
+        await contractRoll();
+        console.log('Contract roll initiated');
+      } catch (err) {
+        console.error('Contract roll failed:', err);
+        return;
+      }
     }
 
     // Generate target faces first
@@ -90,7 +132,7 @@ export default function Home() {
     setIsRolling(true);
     setDiceResult(null);
     startCooldown(); // Start 10s cooldown now
-  }, [canRoll, isRolling, startCooldown]);
+  }, [canRoll, isRolling, isContractRolling, startCooldown, isConnected, balance, betAmount, contractRoll]);
 
   const handleDiceSettled = useCallback(() => {
     console.log('Dice settled with target faces:', targetFaces);
@@ -121,10 +163,37 @@ export default function Home() {
   useShakeListener(shakeEnabled && hasStarted && canRoll, handleRoll, isRolling);
 
   // Handler for "Throw Again" button - directly starts roll
-  const handleThrowAgain = useCallback(() => {
-    if (!canRoll || isRollingRef.current || isRolling) return;
+  const handleThrowAgain = useCallback(async () => {
+    console.log('handleThrowAgain called', { canRoll, isRollingRef: isRollingRef.current, isRolling, isContractRolling });
 
-    // Generate target faces first
+    if (!canRoll || isRollingRef.current || isRolling || isContractRolling) {
+      console.log('Cannot roll now - blocked by state');
+      return;
+    }
+
+    // If connected, check balance and call contract
+    if (isConnected) {
+      // Check if player has enough balance
+      console.log('Balance check:', { balance: balance?.toString(), betAmount: betAmount?.toString() });
+      if (!balance || !betAmount || balance < betAmount) {
+        console.log('Insufficient balance for roll');
+        // Open menu so user can deposit
+        setMenuOpen(true);
+        return;
+      }
+
+      // Call the smart contract roll
+      console.log('Calling contract roll...');
+      try {
+        await contractRoll();
+        console.log('Contract roll initiated');
+      } catch (err) {
+        console.error('Contract roll failed:', err);
+        return;
+      }
+    }
+
+    // Generate target faces first (for animation - will be replaced by blockchain result)
     const die1 = Math.floor(Math.random() * 6) + 1;
     const die2 = Math.floor(Math.random() * 6) + 1;
     console.log('Throw again, target faces:', die1, die2);
@@ -135,7 +204,7 @@ export default function Home() {
     setIsRolling(true);
     setDiceResult(null);
     startCooldown(); // Start 10s cooldown now
-  }, [canRoll, isRolling, startCooldown]);
+  }, [canRoll, isRolling, isContractRolling, startCooldown, isConnected, balance, betAmount, contractRoll]);
 
   return (
     <main className="h-[100dvh] flex flex-col overflow-hidden relative">

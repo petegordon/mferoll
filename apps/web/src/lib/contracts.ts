@@ -1,4 +1,10 @@
-// ERC20 ABI for mfercoin interactions
+// Chain IDs
+export const CHAIN_ID = {
+  BASE_MAINNET: 8453,
+  BASE_SEPOLIA: 84532,
+} as const;
+
+// ERC20 ABI for token interactions
 export const ERC20_ABI = [
   {
     inputs: [{ name: 'owner', type: 'address' }],
@@ -43,7 +49,7 @@ export const ERC20_ABI = [
   },
 ] as const;
 
-// SevenEleven contract ABI
+// SevenEleven contract ABI (updated for Pyth Entropy)
 export const SEVEN_ELEVEN_ABI = [
   // Player functions
   {
@@ -69,8 +75,22 @@ export const SEVEN_ELEVEN_ABI = [
   {
     inputs: [{ name: 'token', type: 'address' }],
     name: 'roll',
-    outputs: [{ name: 'requestId', type: 'uint256' }],
+    outputs: [{ name: 'sequenceNumber', type: 'uint64' }],
     stateMutability: 'nonpayable',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'getEntropyFee',
+    outputs: [{ name: 'fee', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'getEntropyBalance',
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
     type: 'function',
   },
   // View functions
@@ -164,7 +184,7 @@ export const SEVEN_ELEVEN_ABI = [
     type: 'function',
   },
   {
-    inputs: [{ name: 'requestId', type: 'uint256' }],
+    inputs: [{ name: 'sequenceNumber', type: 'uint64' }],
     name: 'pendingRolls',
     outputs: [
       { name: 'player', type: 'address' },
@@ -235,7 +255,7 @@ export const SEVEN_ELEVEN_ABI = [
   {
     anonymous: false,
     inputs: [
-      { indexed: true, name: 'requestId', type: 'uint256' },
+      { indexed: true, name: 'sequenceNumber', type: 'uint64' },
       { indexed: true, name: 'player', type: 'address' },
       { indexed: true, name: 'token', type: 'address' },
       { indexed: false, name: 'betAmount', type: 'uint256' },
@@ -246,7 +266,7 @@ export const SEVEN_ELEVEN_ABI = [
   {
     anonymous: false,
     inputs: [
-      { indexed: true, name: 'requestId', type: 'uint256' },
+      { indexed: true, name: 'sequenceNumber', type: 'uint64' },
       { indexed: true, name: 'player', type: 'address' },
       { indexed: false, name: 'die1', type: 'uint8' },
       { indexed: false, name: 'die2', type: 'uint8' },
@@ -277,21 +297,42 @@ export const SEVEN_ELEVEN_ABI = [
   },
 ] as const;
 
-// Token addresses (Base Mainnet)
-export const TOKEN_ADDRESSES = {
-  MFERCOIN: '0xE3086852A4B125803C815a158249ae468A3254Ca' as `0x${string}`,
-  DRB: '0x3ec2156D4c0A9CBdAB4a016633b7BcF6a8d68Ea2' as `0x${string}`,
-  BANKR: '0x22aF33FE49fD1Fa80c7149773dDe5890D3c76F3b' as `0x${string}`,
-  USDC: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as `0x${string}`,
-  WETH: '0x4200000000000000000000000000000000000006' as `0x${string}`,
+// Token addresses by network
+export const TOKEN_ADDRESSES_BY_CHAIN = {
+  [CHAIN_ID.BASE_MAINNET]: {
+    MFERCOIN: '0xE3086852A4B125803C815a158249ae468A3254Ca' as `0x${string}`,
+    DRB: '0x3ec2156D4c0A9CBdAB4a016633b7BcF6a8d68Ea2' as `0x${string}`,
+    BANKR: '0x22aF33FE49fD1Fa80c7149773dDe5890D3c76F3b' as `0x${string}`,
+    USDC: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as `0x${string}`,
+    WETH: '0x4200000000000000000000000000000000000006' as `0x${string}`,
+  },
+  [CHAIN_ID.BASE_SEPOLIA]: {
+    USDC: '0x036CbD53842c5426634e7929541eC2318f3dCF7e' as `0x${string}`,
+    WETH: '0x4200000000000000000000000000000000000006' as `0x${string}`,
+  },
 } as const;
+
+// Legacy export for backwards compatibility
+export const TOKEN_ADDRESSES = TOKEN_ADDRESSES_BY_CHAIN[CHAIN_ID.BASE_MAINNET];
+
+// SevenEleven contract addresses by network
+export const SEVEN_ELEVEN_ADDRESS_BY_CHAIN = {
+  [CHAIN_ID.BASE_MAINNET]: '0x0000000000000000000000000000000000000000' as `0x${string}`, // TODO: Deploy to mainnet
+  [CHAIN_ID.BASE_SEPOLIA]: '0x9cc0EE4EAfCAA825c52353CDF8C96C51d772e20a' as `0x${string}`, // Deployed 2025-01-20 (v6 - stablecoin getBetAmount fix)
+} as const;
+
+// Helper to get contract address for current chain
+export function getSevenElevenAddress(chainId: number): `0x${string}` {
+  return SEVEN_ELEVEN_ADDRESS_BY_CHAIN[chainId as keyof typeof SEVEN_ELEVEN_ADDRESS_BY_CHAIN]
+    ?? '0x0000000000000000000000000000000000000000';
+}
 
 // Helper to get token icon URL from Trust Wallet assets
 export function getTokenIconUrl(address: string): string {
   return `https://assets-cdn.trustwallet.com/blockchains/base/assets/${address}/logo.png`;
 }
 
-// SevenEleven contract address (to be updated after deployment)
+// Legacy export - will be deprecated
 export const SEVEN_ELEVEN_ADDRESS = '0x0000000000000000000000000000000000000000' as `0x${string}`;
 
 // SevenEleven game constants

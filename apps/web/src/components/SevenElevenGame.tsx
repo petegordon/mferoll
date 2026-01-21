@@ -5,7 +5,7 @@ import { useAccount } from 'wagmi';
 import { formatUnits } from 'viem';
 import {
   useSevenEleven,
-  SUPPORTED_TOKENS,
+  useSupportedTokens,
   parseTokenAmount,
   type SupportedToken,
 } from '@/hooks/useSevenEleven';
@@ -19,10 +19,16 @@ export function SevenElevenGame({
   darkMode,
 }: SevenElevenGameProps) {
   const { isConnected } = useAccount();
-  const [selectedToken, setSelectedToken] = useState<SupportedToken>(SUPPORTED_TOKENS[0]);
+  const supportedTokens = useSupportedTokens();
+  const [selectedToken, setSelectedToken] = useState<SupportedToken | null>(null);
   const [showDepositModal, setShowDepositModal] = useState(false);
   const [depositAmount, setDepositAmount] = useState('');
   const [showStats, setShowStats] = useState(false);
+
+  // Set default token when tokens change (network switch)
+  const currentToken = selectedToken && supportedTokens.find(t => t.address === selectedToken.address)
+    ? selectedToken
+    : supportedTokens[0];
 
   const {
     balance,
@@ -32,6 +38,8 @@ export function SevenElevenGame({
     playerStats,
     betAmountFormatted,
     minDepositFormatted,
+    entropyFee,
+    entropyFeeFormatted,
     allowance,
     needsApproval,
     approve,
@@ -41,11 +49,11 @@ export function SevenElevenGame({
     isDepositing,
     isWithdrawing,
     error,
-  } = useSevenEleven(selectedToken);
+  } = useSevenEleven(currentToken);
 
   // Handle deposit
   const handleDeposit = useCallback(async () => {
-    const amount = parseTokenAmount(depositAmount, selectedToken.decimals);
+    const amount = parseTokenAmount(depositAmount, currentToken.decimals);
     if (amount <= BigInt(0)) return;
 
     // Check if approval needed
@@ -56,7 +64,7 @@ export function SevenElevenGame({
       setDepositAmount('');
       setShowDepositModal(false);
     }
-  }, [depositAmount, selectedToken.decimals, needsApproval, allowance, approve, deposit]);
+  }, [depositAmount, currentToken.decimals, needsApproval, allowance, approve, deposit]);
 
   // Handle withdraw all
   const handleWithdrawAll = useCallback(async () => {
@@ -86,13 +94,13 @@ export function SevenElevenGame({
     <div className="w-full max-w-md mx-auto px-4">
       {/* Token selector */}
       <div className="flex items-center justify-center gap-2 mb-4 flex-wrap">
-        {SUPPORTED_TOKENS.map((token) => (
+        {supportedTokens.map((token) => (
           <button
             key={token.symbol}
             onClick={() => setSelectedToken(token)}
             title={token.symbol}
             className={`p-2 rounded-lg transition-colors ${
-              selectedToken.symbol === token.symbol
+              currentToken.symbol === token.symbol
                 ? darkMode
                   ? 'bg-green-600 ring-2 ring-green-400'
                   : 'bg-green-500 ring-2 ring-green-300'
@@ -128,7 +136,7 @@ export function SevenElevenGame({
           </span>
           <span className={`font-bold flex items-center gap-1.5 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
             {Number(balanceFormatted).toFixed(2)}
-            <img src={selectedToken.icon} alt={selectedToken.symbol} className="w-5 h-5 rounded-full" />
+            <img src={currentToken.icon} alt={currentToken.symbol} className="w-5 h-5 rounded-full" />
           </span>
         </div>
         <div className="flex justify-between items-center mb-3">
@@ -137,7 +145,7 @@ export function SevenElevenGame({
           </span>
           <span className={`text-sm flex items-center gap-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
             ${SEVEN_ELEVEN_CONSTANTS.BET_USD} ({Number(betAmountFormatted).toFixed(4)}
-            <img src={selectedToken.icon} alt={selectedToken.symbol} className="w-4 h-4 rounded-full" />)
+            <img src={currentToken.icon} alt={currentToken.symbol} className="w-4 h-4 rounded-full" />)
           </span>
         </div>
         <div className="flex gap-2">
@@ -234,7 +242,7 @@ export function SevenElevenGame({
               }`}
             >
               Deposit
-              <img src={selectedToken.icon} alt={selectedToken.symbol} className="w-6 h-6 rounded-full" />
+              <img src={currentToken.icon} alt={currentToken.symbol} className="w-6 h-6 rounded-full" />
             </h3>
 
             <div className="mb-4">
@@ -258,7 +266,7 @@ export function SevenElevenGame({
                 <button
                   onClick={() =>
                     walletBalance &&
-                    setDepositAmount(formatUnits(walletBalance, selectedToken.decimals))
+                    setDepositAmount(formatUnits(walletBalance, currentToken.decimals))
                   }
                   className={`px-3 py-2 rounded-lg text-sm ${
                     darkMode
@@ -275,7 +283,7 @@ export function SevenElevenGame({
                 }`}
               >
                 Wallet: {Number(walletBalanceFormatted).toFixed(2)}
-                <img src={selectedToken.icon} alt={selectedToken.symbol} className="w-3.5 h-3.5 rounded-full" />
+                <img src={currentToken.icon} alt={currentToken.symbol} className="w-3.5 h-3.5 rounded-full" />
               </div>
             </div>
 

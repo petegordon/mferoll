@@ -75,8 +75,8 @@ contract SevenElevenTest is Test {
         vm.prank(player);
         mferToken.approve(address(sevenEleven), type(uint256).max);
 
-        // Give player some ETH for entropy fees
-        vm.deal(player, 10 ether);
+        // Fund the contract with ETH for entropy fees (house pays)
+        vm.deal(address(sevenEleven), 10 ether);
     }
 
     // ============ Helper Functions ============
@@ -174,7 +174,7 @@ contract SevenElevenTest is Test {
         sevenEleven.deposit(address(mferToken), depositAmount);
 
         uint256 balanceBefore = sevenEleven.getBalance(player, address(mferToken));
-        uint64 sequenceNumber = sevenEleven.roll{value: ENTROPY_FEE}(address(mferToken));
+        uint64 sequenceNumber = sevenEleven.roll(address(mferToken));
         uint256 balanceAfter = sevenEleven.getBalance(player, address(mferToken));
         vm.stopPrank();
 
@@ -194,7 +194,7 @@ contract SevenElevenTest is Test {
 
         vm.startPrank(player);
         sevenEleven.deposit(address(mferToken), depositAmount);
-        sevenEleven.roll{value: ENTROPY_FEE}(address(mferToken));
+        sevenEleven.roll(address(mferToken));
         vm.stopPrank();
 
         uint256 feeRecipientBalanceAfter = mferToken.balanceOf(feeRecipient);
@@ -204,23 +204,40 @@ contract SevenElevenTest is Test {
     function test_RevertWhen_RollInsufficientBalance() public {
         vm.prank(player);
         vm.expectRevert(SevenEleven.InsufficientBalance.selector);
-        sevenEleven.roll{value: ENTROPY_FEE}(address(mferToken));
+        sevenEleven.roll(address(mferToken));
     }
 
     function test_RevertWhen_RollUnsupportedToken() public {
         vm.prank(player);
         vm.expectRevert(SevenEleven.TokenNotSupported.selector);
-        sevenEleven.roll{value: ENTROPY_FEE}(address(drbToken));
+        sevenEleven.roll(address(drbToken));
     }
 
     function test_RevertWhen_RollInsufficientEntropyFee() public {
         uint256 depositAmount = 10000e18;
 
-        vm.startPrank(player);
-        sevenEleven.deposit(address(mferToken), depositAmount);
+        // Deploy a new contract without funding it with ETH
+        SevenEleven unfundedContract = new SevenEleven(
+            address(entropy),
+            feeRecipient,
+            address(ethUsdFeed),
+            address(weth)
+        );
+        unfundedContract.addToken(address(mferToken), address(mferPool));
 
+        // Add house liquidity
+        mferToken.mint(address(this), HOUSE_LIQUIDITY);
+        mferToken.approve(address(unfundedContract), HOUSE_LIQUIDITY);
+        unfundedContract.depositHouseLiquidity(address(mferToken), HOUSE_LIQUIDITY);
+
+        // Player deposits
+        vm.startPrank(player);
+        mferToken.approve(address(unfundedContract), depositAmount);
+        unfundedContract.deposit(address(mferToken), depositAmount);
+
+        // Roll should fail because contract has no ETH for entropy fee
         vm.expectRevert(SevenEleven.InsufficientFee.selector);
-        sevenEleven.roll{value: 0}(address(mferToken));
+        unfundedContract.roll(address(mferToken));
         vm.stopPrank();
     }
 
@@ -231,7 +248,7 @@ contract SevenElevenTest is Test {
 
         vm.startPrank(player);
         sevenEleven.deposit(address(mferToken), depositAmount);
-        uint64 sequenceNumber = sevenEleven.roll{value: ENTROPY_FEE}(address(mferToken));
+        uint64 sequenceNumber = sevenEleven.roll(address(mferToken));
         vm.stopPrank();
 
         uint256 balanceBeforeSettle = sevenEleven.getBalance(player, address(mferToken));
@@ -255,7 +272,7 @@ contract SevenElevenTest is Test {
 
         vm.startPrank(player);
         sevenEleven.deposit(address(mferToken), depositAmount);
-        uint64 sequenceNumber = sevenEleven.roll{value: ENTROPY_FEE}(address(mferToken));
+        uint64 sequenceNumber = sevenEleven.roll(address(mferToken));
         vm.stopPrank();
 
         uint256 balanceBeforeSettle = sevenEleven.getBalance(player, address(mferToken));
@@ -277,7 +294,7 @@ contract SevenElevenTest is Test {
 
         vm.startPrank(player);
         sevenEleven.deposit(address(mferToken), depositAmount);
-        uint64 sequenceNumber = sevenEleven.roll{value: ENTROPY_FEE}(address(mferToken));
+        uint64 sequenceNumber = sevenEleven.roll(address(mferToken));
         vm.stopPrank();
 
         uint256 balanceBeforeSettle = sevenEleven.getBalance(player, address(mferToken));
@@ -300,7 +317,7 @@ contract SevenElevenTest is Test {
 
         vm.startPrank(player);
         sevenEleven.deposit(address(mferToken), depositAmount);
-        uint64 sequenceNumber = sevenEleven.roll{value: ENTROPY_FEE}(address(mferToken));
+        uint64 sequenceNumber = sevenEleven.roll(address(mferToken));
         vm.stopPrank();
 
         // Get the bet amount (net of fee)
@@ -326,7 +343,7 @@ contract SevenElevenTest is Test {
 
         vm.startPrank(player);
         sevenEleven.deposit(address(mferToken), depositAmount);
-        sevenEleven.roll{value: ENTROPY_FEE}(address(mferToken));
+        sevenEleven.roll(address(mferToken));
         vm.stopPrank();
 
         SevenEleven.PlayerStats memory stats = sevenEleven.getPlayerStats(player);
@@ -340,7 +357,7 @@ contract SevenElevenTest is Test {
 
         vm.startPrank(player);
         sevenEleven.deposit(address(mferToken), depositAmount);
-        sevenEleven.roll{value: ENTROPY_FEE}(address(mferToken));
+        sevenEleven.roll(address(mferToken));
         vm.stopPrank();
 
         // Wait more than SESSION_GAP (1 hour)
@@ -350,7 +367,7 @@ contract SevenElevenTest is Test {
         ethUsdFeed.setPrice(ETH_USD_PRICE);
 
         vm.startPrank(player);
-        sevenEleven.roll{value: ENTROPY_FEE}(address(mferToken));
+        sevenEleven.roll(address(mferToken));
         vm.stopPrank();
 
         SevenEleven.PlayerStats memory stats = sevenEleven.getPlayerStats(player);
@@ -362,12 +379,12 @@ contract SevenElevenTest is Test {
 
         vm.startPrank(player);
         sevenEleven.deposit(address(mferToken), depositAmount);
-        sevenEleven.roll{value: ENTROPY_FEE}(address(mferToken));
+        sevenEleven.roll(address(mferToken));
 
         // Wait less than SESSION_GAP
         vm.warp(block.timestamp + 30 minutes);
 
-        sevenEleven.roll{value: ENTROPY_FEE}(address(mferToken));
+        sevenEleven.roll(address(mferToken));
         vm.stopPrank();
 
         SevenEleven.PlayerStats memory stats = sevenEleven.getPlayerStats(player);
@@ -441,7 +458,7 @@ contract SevenElevenTest is Test {
         sevenEleven.deposit(address(mferToken), depositAmount);
 
         vm.expectRevert(SevenEleven.InsufficientHouseLiquidity.selector);
-        sevenEleven.roll{value: ENTROPY_FEE}(address(mferToken));
+        sevenEleven.roll(address(mferToken));
         vm.stopPrank();
     }
 
