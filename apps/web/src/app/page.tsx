@@ -9,6 +9,7 @@ import { SevenElevenGame } from '@/components/SevenElevenGame';
 import { useSevenEleven, useSupportedTokens } from '@/hooks/useSevenEleven';
 import { useSessionKey } from '@/hooks/useSessionKey';
 import { useSmartWallet } from '@/hooks/useSmartWallet';
+import { DebugConsole, debugLog } from '@/components/DebugConsole';
 
 // Dynamic import for Three.js components to avoid SSR issues
 const DiceScene = dynamic(() => import('@/components/dice/DiceScene'), {
@@ -89,17 +90,12 @@ export default function Home() {
     authorizedRoller &&
     authorizedRoller.toLowerCase() === sessionKeyAddress.toLowerCase();
 
-  // Debug logging for session key state
-  console.log('Session key state:', {
-    hasValidSessionKey,
-    hasSessionKey,
-    isSessionKeyAuthorized,
-    sessionKeyAddress,
-    authorizedRoller,
-    isLoadingSessionKey,
-    sessionKeyClientExists: !!sessionKeyClient,
-    sessionKeyError: sessionKeyError?.message,
-  });
+  // Log session key state changes (not every render)
+  useEffect(() => {
+    if (hasValidSessionKey || isSessionKeyAuthorized) {
+      debugLog.info(`Session: valid=${hasValidSessionKey} auth=${isSessionKeyAuthorized}`);
+    }
+  }, [hasValidSessionKey, isSessionKeyAuthorized]);
 
   // Start cooldown timer (called when roll starts)
   const startCooldown = useCallback(() => {
@@ -133,49 +129,41 @@ export default function Home() {
 
   // Handle roll - only when canRoll is true
   const handleRoll = useCallback(async () => {
-    console.log('handleRoll called', { canRoll, isRollingRef: isRollingRef.current, isRolling, isContractRolling, isRollingWithSessionKey });
-
     if (!canRoll || isRollingRef.current || isRolling || isContractRolling || isRollingWithSessionKey) {
-      console.log('Cannot roll now - blocked by state');
       return;
     }
 
     // If connected, check balance and call contract
     if (isConnected) {
-      // Check if player has enough balance
-      console.log('Balance check:', { balance: balance?.toString(), betAmount: betAmount?.toString() });
       if (!balance || !betAmount || balance < betAmount) {
-        console.log('Insufficient balance for roll');
-        // Open menu so user can deposit
+        debugLog.warn('Insufficient balance');
         setMenuOpen(true);
         return;
       }
 
       // Try to use session key for gasless roll (only if authorized on contract)
       if (hasSessionKey && isSessionKeyAuthorized) {
-        console.log('Using session key for gasless roll...');
+        debugLog.info('Rolling with session key (gasless)');
         try {
           await rollWithSessionKey();
-          console.log('Session key roll initiated');
         } catch (err) {
-          console.error('Session key roll failed, falling back to regular roll:', err);
+          debugLog.error(`Session key roll failed: ${err}`);
           // Fall back to regular roll
           try {
             await contractRoll();
-            console.log('Contract roll initiated (fallback)');
+            debugLog.info('Fallback to contract roll');
           } catch (err2) {
-            console.error('Contract roll also failed:', err2);
+            debugLog.error(`Contract roll also failed: ${err2}`);
             return;
           }
         }
       } else {
         // Regular roll with wallet signature
-        console.log('Calling contract roll...');
+        debugLog.info('Rolling with wallet signature');
         try {
           await contractRoll();
-          console.log('Contract roll initiated');
         } catch (err) {
-          console.error('Contract roll failed:', err);
+          debugLog.error(`Contract roll failed: ${err}`);
           return;
         }
       }
@@ -184,7 +172,6 @@ export default function Home() {
     // Generate target faces first
     const die1 = Math.floor(Math.random() * 6) + 1;
     const die2 = Math.floor(Math.random() * 6) + 1;
-    console.log('Starting roll, target faces:', die1, die2);
 
     isRollingRef.current = true;
     setRollCount(c => c + 1);
@@ -224,49 +211,41 @@ export default function Home() {
 
   // Handler for "Throw Again" button - directly starts roll
   const handleThrowAgain = useCallback(async () => {
-    console.log('handleThrowAgain called', { canRoll, isRollingRef: isRollingRef.current, isRolling, isContractRolling, isRollingWithSessionKey });
-
     if (!canRoll || isRollingRef.current || isRolling || isContractRolling || isRollingWithSessionKey) {
-      console.log('Cannot roll now - blocked by state');
       return;
     }
 
     // If connected, check balance and call contract
     if (isConnected) {
-      // Check if player has enough balance
-      console.log('Balance check:', { balance: balance?.toString(), betAmount: betAmount?.toString() });
       if (!balance || !betAmount || balance < betAmount) {
-        console.log('Insufficient balance for roll');
-        // Open menu so user can deposit
+        debugLog.warn('Insufficient balance');
         setMenuOpen(true);
         return;
       }
 
       // Try to use session key for gasless roll (only if authorized on contract)
       if (hasSessionKey && isSessionKeyAuthorized) {
-        console.log('Using session key for gasless roll...');
+        debugLog.info('Rolling with session key (gasless)');
         try {
           await rollWithSessionKey();
-          console.log('Session key roll initiated');
         } catch (err) {
-          console.error('Session key roll failed, falling back to regular roll:', err);
+          debugLog.error(`Session key roll failed: ${err}`);
           // Fall back to regular roll
           try {
             await contractRoll();
-            console.log('Contract roll initiated (fallback)');
+            debugLog.info('Fallback to contract roll');
           } catch (err2) {
-            console.error('Contract roll also failed:', err2);
+            debugLog.error(`Contract roll also failed: ${err2}`);
             return;
           }
         }
       } else {
         // Regular roll with wallet signature
-        console.log('Calling contract roll...');
+        debugLog.info('Rolling with wallet signature');
         try {
           await contractRoll();
-          console.log('Contract roll initiated');
         } catch (err) {
-          console.error('Contract roll failed:', err);
+          debugLog.error(`Contract roll failed: ${err}`);
           return;
         }
       }
@@ -275,7 +254,6 @@ export default function Home() {
     // Generate target faces first (for animation - will be replaced by blockchain result)
     const die1 = Math.floor(Math.random() * 6) + 1;
     const die2 = Math.floor(Math.random() * 6) + 1;
-    console.log('Throw again, target faces:', die1, die2);
 
     isRollingRef.current = true;
     setRollCount(c => c + 1);
@@ -509,6 +487,9 @@ export default function Home() {
           </div>
         )}
       </div>
+
+      {/* Debug console for mobile testing */}
+      <DebugConsole />
     </main>
   );
 }

@@ -21,6 +21,7 @@ import {
   getTokenIconUrl,
   type PlayerStats,
 } from '@/lib/contracts';
+import { debugLog } from '@/components/DebugConsole';
 
 // Token configuration type
 export interface SupportedToken {
@@ -562,7 +563,7 @@ export function useSevenEleven(
         ],
       });
 
-      console.log('RollFor submitted via session key:', userOpHash);
+      debugLog.info(`RollFor submitted: ${userOpHash.slice(0, 10)}...`);
 
       // Refetch balance after a short delay to allow the transaction to be mined
       setTimeout(() => {
