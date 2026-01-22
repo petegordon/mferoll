@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAccount, useChainId, useWalletClient } from 'wagmi';
 import { createPublicClient, http, type Hex, encodeFunctionData } from 'viem';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
@@ -87,6 +87,9 @@ export function useSessionKey(): UseSessionKeyReturn {
   const [isLoadingSessionKey, setIsLoadingSessionKey] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
+  // Ref to skip deserialization when we just created a session key
+  const skipDeserializationRef = useRef(false);
+
   const isZeroDevAvailable = useMemo(() => isZeroDevConfigured(), []);
   const zeroDevConfig = useMemo(() => getZeroDevConfig(chainId), [chainId]);
   const contractAddress = useMemo(() => getSevenElevenAddress(chainId), [chainId]);
@@ -140,12 +143,20 @@ export function useSessionKey(): UseSessionKeyReturn {
   }, [address, isConnected, chainId]);
 
   // Deserialize session key when storedSession changes
+  // Skip if sessionKeyClient is already set (e.g., just created a new session key)
   useEffect(() => {
     let isMounted = true;
 
     async function loadSessionKey() {
       if (!storedSession || !zeroDevConfig || !isZeroDevAvailable || isSessionKeyExpired) {
         setSessionKeyClient(undefined);
+        return;
+      }
+
+      // Skip deserialization if we just created a session key (client already set)
+      if (skipDeserializationRef.current) {
+        console.log('Skipping deserialization - session key just created');
+        skipDeserializationRef.current = false;
         return;
       }
 
@@ -308,6 +319,9 @@ export function useSessionKey(): UseSessionKeyReturn {
 
       const storageKey = getStorageKey(chainId, address);
       localStorage.setItem(storageKey, JSON.stringify(sessionData));
+
+      // Mark that we're creating a session key to skip the deserialization useEffect
+      skipDeserializationRef.current = true;
       setStoredSession(sessionData);
 
       // Create ZeroDev paymaster client
