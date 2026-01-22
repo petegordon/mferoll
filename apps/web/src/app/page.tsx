@@ -60,11 +60,14 @@ export default function Home() {
   const { smartWalletAddress, isSmartWalletReady, isZeroDevAvailable } = useSmartWallet();
   const {
     hasValidSessionKey,
+    hasSessionKeyStored,
+    isSessionKeyExpired,
     sessionKeyClient,
     sessionKeyAddress,
     isCreatingSessionKey,
     isLoadingSessionKey,
     createSessionKey,
+    clearSessionKey,
     error: sessionKeyError,
   } = useSessionKey();
 
@@ -485,7 +488,19 @@ export default function Home() {
               </button>
               {/* Game UI */}
               <div className="p-4 pt-12 max-h-[80vh] overflow-y-auto">
-                <SevenElevenGame darkMode={darkMode} />
+                <SevenElevenGame
+                  darkMode={darkMode}
+                  sessionKey={{
+                    hasValidSessionKey,
+                    hasSessionKeyStored,
+                    isSessionKeyExpired,
+                    isCreatingSessionKey,
+                    sessionKeyAddress,
+                    error: sessionKeyError,
+                    createSessionKey,
+                    clearSessionKey,
+                  }}
+                />
               </div>
             </div>
           </div>

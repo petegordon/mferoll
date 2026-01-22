@@ -9,16 +9,28 @@ import {
   parseTokenAmount,
   type SupportedToken,
 } from '@/hooks/useSevenEleven';
-import { useSessionKey } from '@/hooks/useSessionKey';
 import { SEVEN_ELEVEN_CONSTANTS } from '@/lib/contracts';
 import { isZeroDevConfigured } from '@/lib/zerodev';
 
+interface SessionKeyState {
+  hasValidSessionKey: boolean;
+  hasSessionKeyStored: boolean;
+  isSessionKeyExpired: boolean;
+  isCreatingSessionKey: boolean;
+  sessionKeyAddress: `0x${string}` | undefined;
+  error: Error | null;
+  createSessionKey: () => Promise<`0x${string}`>;
+  clearSessionKey: () => void;
+}
+
 interface SevenElevenGameProps {
   darkMode: boolean;
+  sessionKey: SessionKeyState;
 }
 
 export function SevenElevenGame({
   darkMode,
+  sessionKey,
 }: SevenElevenGameProps) {
   const { isConnected } = useAccount();
   const supportedTokens = useSupportedTokens();
@@ -56,7 +68,7 @@ export function SevenElevenGame({
     error,
   } = useSevenEleven(currentToken);
 
-  // Session key for gasless rolls
+  // Session key for gasless rolls (passed from parent to share state)
   const {
     hasValidSessionKey,
     hasSessionKeyStored,
@@ -66,7 +78,7 @@ export function SevenElevenGame({
     clearSessionKey,
     sessionKeyAddress,
     error: sessionKeyError,
-  } = useSessionKey();
+  } = sessionKey;
 
   // Check if session key is fully ready (both created AND authorized on contract)
   const isSessionKeyAuthorized = hasValidSessionKey &&
