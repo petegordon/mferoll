@@ -9,7 +9,9 @@ import {
   parseTokenAmount,
   type SupportedToken,
 } from '@/hooks/useSevenEleven';
+import { useSessionKey } from '@/hooks/useSessionKey';
 import { SEVEN_ELEVEN_CONSTANTS } from '@/lib/contracts';
+import { isZeroDevConfigured } from '@/lib/zerodev';
 
 interface SevenElevenGameProps {
   darkMode: boolean;
@@ -45,11 +47,40 @@ export function SevenElevenGame({
     approve,
     deposit,
     withdraw,
+    authorizeRoller,
+    authorizedRoller,
     isApproving,
     isDepositing,
     isWithdrawing,
+    isAuthorizing,
     error,
   } = useSevenEleven(currentToken);
+
+  // Session key for gasless rolls
+  const {
+    hasValidSessionKey,
+    hasSessionKeyStored,
+    isSessionKeyExpired,
+    isCreatingSessionKey,
+    createSessionKey,
+    clearSessionKey,
+    sessionKeyAddress,
+    error: sessionKeyError,
+  } = useSessionKey();
+
+  // Check if session key is fully ready (both created AND authorized on contract)
+  const isSessionKeyAuthorized = hasValidSessionKey &&
+    sessionKeyAddress &&
+    authorizedRoller &&
+    authorizedRoller.toLowerCase() === sessionKeyAddress.toLowerCase();
+
+  // Need to authorize if we have a session key but it's not authorized on contract
+  const needsAuthorization = hasValidSessionKey && sessionKeyAddress && !isSessionKeyAuthorized;
+
+  // Show Enable button when no session key exists or when expired
+  const showEnableButton = !hasSessionKeyStored || isSessionKeyExpired;
+
+  const isZeroDevEnabled = isZeroDevConfigured();
 
   // Handle deposit
   const handleDeposit = useCallback(async () => {
@@ -63,8 +94,34 @@ export function SevenElevenGame({
       await deposit(amount);
       setDepositAmount('');
       setShowDepositModal(false);
+
+      // After successful deposit, offer to create session key if ZeroDev is enabled
+      // Note: Session keys require the user to use a smart wallet for the player address
+      // This is a known limitation - full implementation requires smart wallet integration
+      if (isZeroDevEnabled && !hasValidSessionKey) {
+        console.log('ZeroDev enabled - session key creation available after deposit');
+      }
     }
-  }, [depositAmount, currentToken.decimals, needsApproval, allowance, approve, deposit]);
+  }, [depositAmount, currentToken.decimals, needsApproval, allowance, approve, deposit, isZeroDevEnabled, hasValidSessionKey]);
+
+  // Handle session key creation and authorization
+  // 1. Create a ZeroDev session key (local, no wallet prompt)
+  // 2. Authorize the session key's wallet on the contract (one wallet prompt)
+  // After this, rolls will be gasless via rollFor()
+  const handleCreateSessionKey = useCallback(async () => {
+    try {
+      // Create the session key and get the kernel wallet address
+      const kernelAddress = await createSessionKey();
+      console.log('Session key created, kernel address:', kernelAddress);
+
+      // Authorize the kernel wallet to call rollFor on behalf of the player
+      // This requires one wallet signature from the user
+      await authorizeRoller(kernelAddress);
+      console.log('Session key authorized on contract');
+    } catch (err) {
+      console.error('Failed to create/authorize session key:', err);
+    }
+  }, [createSessionKey, authorizeRoller]);
 
   // Handle withdraw all
   const handleWithdrawAll = useCallback(async () => {
@@ -172,6 +229,83 @@ export function SevenElevenGame({
           </button>
         </div>
       </div>
+
+      {/* Session Key Status (when ZeroDev is enabled) */}
+      {isZeroDevEnabled && (
+        <div
+          className={`rounded-xl p-3 mb-4 ${
+            darkMode ? 'bg-gray-700/80' : 'bg-gray-100'
+          }`}
+        >
+          <div className="flex justify-between items-center">
+            <div className="flex items-center gap-2">
+              <div
+                className={`w-2 h-2 rounded-full ${
+                  isSessionKeyAuthorized
+                    ? 'bg-green-500'
+                    : needsAuthorization
+                    ? 'bg-yellow-500'
+                    : isSessionKeyExpired
+                    ? 'bg-yellow-500'
+                    : 'bg-gray-400'
+                }`}
+              />
+              <span className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                {isSessionKeyAuthorized
+                  ? 'Gasless Rolls Active'
+                  : needsAuthorization
+                  ? 'Needs Authorization'
+                  : isSessionKeyExpired
+                  ? 'Session Expired'
+                  : 'Gasless Rolls Available'}
+              </span>
+            </div>
+            {/* Show Enable button when no session key exists or expired */}
+            {showEnableButton && (
+              <button
+                onClick={handleCreateSessionKey}
+                disabled={isCreatingSessionKey || isAuthorizing}
+                className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-colors ${
+                  darkMode
+                    ? 'bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-50'
+                    : 'bg-blue-500 hover:bg-blue-400 text-white disabled:opacity-50'
+                }`}
+              >
+                {isCreatingSessionKey ? 'Creating...' : isAuthorizing ? 'Authorizing...' : 'Enable'}
+              </button>
+            )}
+            {/* Show Authorize button when session key exists but not authorized on contract */}
+            {needsAuthorization && sessionKeyAddress && (
+              <button
+                onClick={() => authorizeRoller(sessionKeyAddress)}
+                disabled={isAuthorizing}
+                className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-colors ${
+                  darkMode
+                    ? 'bg-yellow-600 hover:bg-yellow-500 text-white disabled:opacity-50'
+                    : 'bg-yellow-500 hover:bg-yellow-400 text-white disabled:opacity-50'
+                }`}
+              >
+                {isAuthorizing ? 'Authorizing...' : 'Authorize'}
+              </button>
+            )}
+          </div>
+          {isSessionKeyAuthorized && (
+            <div className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+              No transaction prompts on rolls
+            </div>
+          )}
+          {needsAuthorization && (
+            <div className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+              One-time authorization needed
+            </div>
+          )}
+          {sessionKeyError && (
+            <div className="text-xs mt-1 text-red-500">
+              {sessionKeyError.message}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Stats toggle */}
       <button

@@ -7,6 +7,8 @@ import { useAccount } from 'wagmi';
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { SevenElevenGame } from '@/components/SevenElevenGame';
 import { useSevenEleven, useSupportedTokens } from '@/hooks/useSevenEleven';
+import { useSessionKey } from '@/hooks/useSessionKey';
+import { useSmartWallet } from '@/hooks/useSmartWallet';
 
 // Dynamic import for Three.js components to avoid SSR issues
 const DiceScene = dynamic(() => import('@/components/dice/DiceScene'), {
@@ -52,13 +54,52 @@ export default function Home() {
     decimals: 6,
     icon: '',
   }; // Default to first token (USDC on testnet)
+
+  // Smart wallet and session key for gasless rolls
+  const { smartWalletAddress, isSmartWalletReady, isZeroDevAvailable } = useSmartWallet();
+  const {
+    hasValidSessionKey,
+    sessionKeyClient,
+    sessionKeyAddress,
+    isCreatingSessionKey,
+    isLoadingSessionKey,
+    createSessionKey,
+    error: sessionKeyError,
+  } = useSessionKey();
+
+  // Use session key client for rolls if available
   const {
     balance,
     betAmount,
     roll: contractRoll,
+    rollWithSessionKey,
     isRolling: isContractRolling,
+    isRollingWithSessionKey,
+    hasSessionKey,
+    authorizedRoller,
     error: contractError,
-  } = useSevenEleven(currentToken);
+  } = useSevenEleven(currentToken, {
+    // Pass session key client for gasless rolls
+    sessionKeyClient: hasValidSessionKey ? sessionKeyClient : undefined,
+  });
+
+  // Check if session key is fully authorized on the contract
+  const isSessionKeyAuthorized = hasValidSessionKey &&
+    sessionKeyAddress &&
+    authorizedRoller &&
+    authorizedRoller.toLowerCase() === sessionKeyAddress.toLowerCase();
+
+  // Debug logging for session key state
+  console.log('Session key state:', {
+    hasValidSessionKey,
+    hasSessionKey,
+    isSessionKeyAuthorized,
+    sessionKeyAddress,
+    authorizedRoller,
+    isLoadingSessionKey,
+    sessionKeyClientExists: !!sessionKeyClient,
+    sessionKeyError: sessionKeyError?.message,
+  });
 
   // Start cooldown timer (called when roll starts)
   const startCooldown = useCallback(() => {
@@ -92,9 +133,9 @@ export default function Home() {
 
   // Handle roll - only when canRoll is true
   const handleRoll = useCallback(async () => {
-    console.log('handleRoll called', { canRoll, isRollingRef: isRollingRef.current, isRolling, isContractRolling });
+    console.log('handleRoll called', { canRoll, isRollingRef: isRollingRef.current, isRolling, isContractRolling, isRollingWithSessionKey });
 
-    if (!canRoll || isRollingRef.current || isRolling || isContractRolling) {
+    if (!canRoll || isRollingRef.current || isRolling || isContractRolling || isRollingWithSessionKey) {
       console.log('Cannot roll now - blocked by state');
       return;
     }
@@ -110,14 +151,33 @@ export default function Home() {
         return;
       }
 
-      // Call the smart contract roll
-      console.log('Calling contract roll...');
-      try {
-        await contractRoll();
-        console.log('Contract roll initiated');
-      } catch (err) {
-        console.error('Contract roll failed:', err);
-        return;
+      // Try to use session key for gasless roll (only if authorized on contract)
+      if (hasSessionKey && isSessionKeyAuthorized) {
+        console.log('Using session key for gasless roll...');
+        try {
+          await rollWithSessionKey();
+          console.log('Session key roll initiated');
+        } catch (err) {
+          console.error('Session key roll failed, falling back to regular roll:', err);
+          // Fall back to regular roll
+          try {
+            await contractRoll();
+            console.log('Contract roll initiated (fallback)');
+          } catch (err2) {
+            console.error('Contract roll also failed:', err2);
+            return;
+          }
+        }
+      } else {
+        // Regular roll with wallet signature
+        console.log('Calling contract roll...');
+        try {
+          await contractRoll();
+          console.log('Contract roll initiated');
+        } catch (err) {
+          console.error('Contract roll failed:', err);
+          return;
+        }
       }
     }
 
@@ -132,7 +192,7 @@ export default function Home() {
     setIsRolling(true);
     setDiceResult(null);
     startCooldown(); // Start 10s cooldown now
-  }, [canRoll, isRolling, isContractRolling, startCooldown, isConnected, balance, betAmount, contractRoll]);
+  }, [canRoll, isRolling, isContractRolling, isRollingWithSessionKey, startCooldown, isConnected, balance, betAmount, contractRoll, hasSessionKey, isSessionKeyAuthorized, rollWithSessionKey]);
 
   const handleDiceSettled = useCallback(() => {
     console.log('Dice settled with target faces:', targetFaces);
@@ -164,9 +224,9 @@ export default function Home() {
 
   // Handler for "Throw Again" button - directly starts roll
   const handleThrowAgain = useCallback(async () => {
-    console.log('handleThrowAgain called', { canRoll, isRollingRef: isRollingRef.current, isRolling, isContractRolling });
+    console.log('handleThrowAgain called', { canRoll, isRollingRef: isRollingRef.current, isRolling, isContractRolling, isRollingWithSessionKey });
 
-    if (!canRoll || isRollingRef.current || isRolling || isContractRolling) {
+    if (!canRoll || isRollingRef.current || isRolling || isContractRolling || isRollingWithSessionKey) {
       console.log('Cannot roll now - blocked by state');
       return;
     }
@@ -182,14 +242,33 @@ export default function Home() {
         return;
       }
 
-      // Call the smart contract roll
-      console.log('Calling contract roll...');
-      try {
-        await contractRoll();
-        console.log('Contract roll initiated');
-      } catch (err) {
-        console.error('Contract roll failed:', err);
-        return;
+      // Try to use session key for gasless roll (only if authorized on contract)
+      if (hasSessionKey && isSessionKeyAuthorized) {
+        console.log('Using session key for gasless roll...');
+        try {
+          await rollWithSessionKey();
+          console.log('Session key roll initiated');
+        } catch (err) {
+          console.error('Session key roll failed, falling back to regular roll:', err);
+          // Fall back to regular roll
+          try {
+            await contractRoll();
+            console.log('Contract roll initiated (fallback)');
+          } catch (err2) {
+            console.error('Contract roll also failed:', err2);
+            return;
+          }
+        }
+      } else {
+        // Regular roll with wallet signature
+        console.log('Calling contract roll...');
+        try {
+          await contractRoll();
+          console.log('Contract roll initiated');
+        } catch (err) {
+          console.error('Contract roll failed:', err);
+          return;
+        }
       }
     }
 
@@ -204,7 +283,7 @@ export default function Home() {
     setIsRolling(true);
     setDiceResult(null);
     startCooldown(); // Start 10s cooldown now
-  }, [canRoll, isRolling, isContractRolling, startCooldown, isConnected, balance, betAmount, contractRoll]);
+  }, [canRoll, isRolling, isContractRolling, isRollingWithSessionKey, startCooldown, isConnected, balance, betAmount, contractRoll, hasSessionKey, isSessionKeyAuthorized, rollWithSessionKey]);
 
   return (
     <main className="h-[100dvh] flex flex-col overflow-hidden relative">

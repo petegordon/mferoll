@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.28;
 
 import {IEntropyV2} from "./pyth/IEntropyV2.sol";
 import {IEntropyConsumer} from "./pyth/IEntropyConsumer.sol";
 import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
+import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
@@ -87,6 +88,9 @@ contract SevenEleven is IEntropyConsumer, ReentrancyGuard, Ownable {
     // Pending VRF requests: sequenceNumber => PendingRoll
     mapping(uint64 => PendingRoll) public pendingRolls;
 
+    // Authorized rollers: player => authorized roller address (for gasless rolls)
+    mapping(address => address) public authorizedRollers;
+
     // Events
     event TokenAdded(address indexed token, address uniswapPool);
     event TokenRemoved(address indexed token);
@@ -98,6 +102,8 @@ contract SevenEleven is IEntropyConsumer, ReentrancyGuard, Ownable {
     event NewSession(address indexed player, uint256 sessionNumber);
     event HouseLiquidityDeposited(address indexed token, uint256 amount);
     event HouseLiquidityWithdrawn(address indexed token, uint256 amount);
+    event RollerAuthorized(address indexed player, address indexed roller);
+    event RollerRevoked(address indexed player, address indexed previousRoller);
 
     // Errors
     error TokenNotSupported();
@@ -110,6 +116,7 @@ contract SevenEleven is IEntropyConsumer, ReentrancyGuard, Ownable {
     error InvalidPrice();
     error PoolNotFound();
     error InsufficientFee();
+    error NotAuthorized();
 
     constructor(
         address _entropy,
@@ -212,6 +219,82 @@ contract SevenEleven is IEntropyConsumer, ReentrancyGuard, Ownable {
     }
 
     /**
+     * @notice Deposit tokens and authorize a roller in one transaction
+     * @dev Combines deposit() + authorizeRoller() for optimal UX
+     * @param token The token address to deposit
+     * @param amount The amount to deposit
+     * @param roller The address to authorize for rolling
+     */
+    function depositAndAuthorize(address token, uint256 amount, address roller) external nonReentrant {
+        TokenConfig storage config = supportedTokens[token];
+        if (!config.enabled) revert TokenNotSupported();
+        if (amount == 0) revert InvalidAmount();
+
+        // Check minimum deposit in USD
+        uint256 usdCents = getTokenValueInCents(token, amount);
+        if (usdCents < MIN_DEPOSIT_CENTS) revert InsufficientDeposit();
+
+        IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
+        playerBalances[msg.sender][token] += amount;
+
+        // Authorize the roller
+        address previousRoller = authorizedRollers[msg.sender];
+        authorizedRollers[msg.sender] = roller;
+
+        emit Deposited(msg.sender, token, amount);
+        if (previousRoller != address(0) && previousRoller != roller) {
+            emit RollerRevoked(msg.sender, previousRoller);
+        }
+        emit RollerAuthorized(msg.sender, roller);
+    }
+
+    /**
+     * @notice Deposit tokens using EIP-2612 permit and authorize a roller
+     * @dev Single transaction: permit signature + deposit + authorize
+     * @param token The token address (must support EIP-2612 permit)
+     * @param amount The amount to deposit
+     * @param roller The address to authorize for rolling
+     * @param deadline The permit deadline
+     * @param v The permit signature v
+     * @param r The permit signature r
+     * @param s The permit signature s
+     */
+    function depositAndAuthorizeWithPermit(
+        address token,
+        uint256 amount,
+        address roller,
+        uint256 deadline,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) external nonReentrant {
+        TokenConfig storage config = supportedTokens[token];
+        if (!config.enabled) revert TokenNotSupported();
+        if (amount == 0) revert InvalidAmount();
+
+        // Check minimum deposit in USD
+        uint256 usdCents = getTokenValueInCents(token, amount);
+        if (usdCents < MIN_DEPOSIT_CENTS) revert InsufficientDeposit();
+
+        // Execute permit (gasless approval)
+        IERC20Permit(token).permit(msg.sender, address(this), amount, deadline, v, r, s);
+
+        // Transfer tokens
+        IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
+        playerBalances[msg.sender][token] += amount;
+
+        // Authorize the roller
+        address previousRoller = authorizedRollers[msg.sender];
+        authorizedRollers[msg.sender] = roller;
+
+        emit Deposited(msg.sender, token, amount);
+        if (previousRoller != address(0) && previousRoller != roller) {
+            emit RollerRevoked(msg.sender, previousRoller);
+        }
+        emit RollerAuthorized(msg.sender, roller);
+    }
+
+    /**
      * @notice Withdraw tokens from balance
      * @param token The token address to withdraw
      * @param amount The amount to withdraw
@@ -241,6 +324,54 @@ contract SevenEleven is IEntropyConsumer, ReentrancyGuard, Ownable {
      * @return sequenceNumber The Pyth Entropy sequence number
      */
     function roll(address token) external nonReentrant returns (uint64 sequenceNumber) {
+        return _roll(msg.sender, token);
+    }
+
+    /**
+     * @notice Roll on behalf of another player (requires authorization)
+     * @dev Used by session keys for gasless rolls
+     * @param player The player whose balance to use
+     * @param token The token to bet with
+     * @return sequenceNumber The Pyth Entropy sequence number
+     */
+    function rollFor(address player, address token) external nonReentrant returns (uint64 sequenceNumber) {
+        if (authorizedRollers[player] != msg.sender) revert NotAuthorized();
+        return _roll(player, token);
+    }
+
+    /**
+     * @notice Authorize an address to roll on your behalf
+     * @dev Used for session keys - only one authorized roller at a time
+     * @param roller The address to authorize
+     */
+    function authorizeRoller(address roller) external {
+        address previousRoller = authorizedRollers[msg.sender];
+        authorizedRollers[msg.sender] = roller;
+
+        if (previousRoller != address(0)) {
+            emit RollerRevoked(msg.sender, previousRoller);
+        }
+        emit RollerAuthorized(msg.sender, roller);
+    }
+
+    /**
+     * @notice Revoke the currently authorized roller
+     */
+    function revokeRoller() external {
+        address previousRoller = authorizedRollers[msg.sender];
+        if (previousRoller != address(0)) {
+            delete authorizedRollers[msg.sender];
+            emit RollerRevoked(msg.sender, previousRoller);
+        }
+    }
+
+    /**
+     * @notice Internal roll logic shared by roll() and rollFor()
+     * @param player The player whose balance to use
+     * @param token The token to bet with
+     * @return sequenceNumber The Pyth Entropy sequence number
+     */
+    function _roll(address player, address token) internal returns (uint64 sequenceNumber) {
         TokenConfig storage config = supportedTokens[token];
         if (!config.enabled) revert TokenNotSupported();
 
@@ -252,7 +383,7 @@ contract SevenEleven is IEntropyConsumer, ReentrancyGuard, Ownable {
         uint256 feeAmount = (betAmount * FEE_BPS) / BPS_DENOMINATOR;
         uint256 totalRequired = betAmount;
 
-        if (playerBalances[msg.sender][token] < totalRequired) revert InsufficientBalance();
+        if (playerBalances[player][token] < totalRequired) revert InsufficientBalance();
 
         // Calculate potential payout (3x bet minus fee)
         uint256 netBet = betAmount - feeAmount;
@@ -262,30 +393,30 @@ contract SevenEleven is IEntropyConsumer, ReentrancyGuard, Ownable {
         if (houseLiquidity[token] < houseRisk) revert InsufficientHouseLiquidity();
 
         // Deduct bet from player balance
-        playerBalances[msg.sender][token] -= totalRequired;
+        playerBalances[player][token] -= totalRequired;
 
         // Transfer fee to recipient immediately
         IERC20(token).safeTransfer(FEE_RECIPIENT, feeAmount);
 
         // Update session tracking
-        _updateSession(msg.sender);
+        _updateSession(player);
 
         // Request randomness from Pyth Entropy (house pays the fee)
         sequenceNumber = entropy.requestV2{value: entropyFee}();
 
         pendingRolls[sequenceNumber] = PendingRoll({
-            player: msg.sender,
+            player: player,
             token: token,
             betAmount: netBet, // Store net bet after fee
             feeAmount: feeAmount
         });
 
         // Update stats
-        PlayerStats storage stats = playerStats[msg.sender];
+        PlayerStats storage stats = playerStats[player];
         stats.totalFeePaid += getTokenValueInCents(token, feeAmount);
 
-        emit RollRequested(sequenceNumber, msg.sender, token, betAmount);
-        emit FeePaid(msg.sender, token, feeAmount);
+        emit RollRequested(sequenceNumber, player, token, betAmount);
+        emit FeePaid(player, token, feeAmount);
     }
 
     // ============ Session Tracking ============
@@ -451,6 +582,25 @@ contract SevenEleven is IEntropyConsumer, ReentrancyGuard, Ownable {
      */
     function isTokenSupported(address token) external view returns (bool) {
         return supportedTokens[token].enabled;
+    }
+
+    /**
+     * @notice Get the authorized roller for a player
+     * @param player The player address
+     * @return The authorized roller address (or address(0) if none)
+     */
+    function getAuthorizedRoller(address player) external view returns (address) {
+        return authorizedRollers[player];
+    }
+
+    /**
+     * @notice Check if an address can roll on behalf of a player
+     * @param roller The potential roller address
+     * @param player The player address
+     * @return True if roller is authorized to roll for player
+     */
+    function canRollFor(address roller, address player) external view returns (bool) {
+        return authorizedRollers[player] == roller;
     }
 
     // ============ Admin Functions ============

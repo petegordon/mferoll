@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   useAccount,
   useChainId,
@@ -9,7 +9,7 @@ import {
   useWaitForTransactionReceipt,
   useWatchContractEvent,
 } from 'wagmi';
-import { parseUnits, formatUnits } from 'viem';
+import { parseUnits, formatUnits, encodeFunctionData } from 'viem';
 import {
   SEVEN_ELEVEN_ABI,
   ERC20_ABI,
@@ -99,6 +99,17 @@ export function getTokensForChain(chainId: number): SupportedToken[] {
 // Legacy export for backwards compatibility
 export const SUPPORTED_TOKENS = MAINNET_TOKENS;
 
+interface UseSevenElevenOptions {
+  // Optional player address override (for smart wallet mode)
+  playerAddress?: `0x${string}`;
+  // Session key wallet address (the smart wallet that will call rollFor)
+  sessionKeyAddress?: `0x${string}`;
+  // Optional session key client for gasless rolls
+  sessionKeyClient?: {
+    sendUserOperation: (params: { calls: Array<{ to: `0x${string}`; data: `0x${string}`; value?: bigint }> }) => Promise<`0x${string}`>;
+  };
+}
+
 interface UseSevenElevenReturn {
   // State
   isConnected: boolean;
@@ -134,17 +145,31 @@ interface UseSevenElevenReturn {
   // House liquidity
   houseLiquidity: bigint | undefined;
 
+  // Session key / authorization
+  authorizedRoller: `0x${string}` | undefined;
+  hasAuthorizedRoller: boolean;
+
   // Write functions
   approve: (amount: bigint) => Promise<void>;
   deposit: (amount: bigint) => Promise<void>;
+  depositAndAuthorize: (amount: bigint, roller: `0x${string}`) => Promise<void>;
   withdraw: (amount: bigint) => Promise<void>;
   roll: () => Promise<void>;
+  rollWithSessionKey: () => Promise<`0x${string}` | undefined>;
+  authorizeRoller: (roller: `0x${string}`) => Promise<void>;
+  revokeRoller: () => Promise<void>;
+
+  // Session key state
+  hasSessionKey: boolean;
+  sessionKeyAddress: `0x${string}` | undefined;
 
   // Transaction states
   isApproving: boolean;
   isDepositing: boolean;
   isWithdrawing: boolean;
   isRolling: boolean;
+  isRollingWithSessionKey: boolean;
+  isAuthorizing: boolean;
   isPending: boolean;
 
   // Transaction hashes
@@ -160,11 +185,22 @@ interface UseSevenElevenReturn {
   refetchBalance: () => void;
   refetchStats: () => void;
   refetchEntropyFee: () => void;
+  refetchAuthorizedRoller: () => void;
 }
 
-export function useSevenEleven(token: SupportedToken): UseSevenElevenReturn {
-  const { address, isConnected } = useAccount();
+export function useSevenEleven(
+  token: SupportedToken,
+  options: UseSevenElevenOptions = {}
+): UseSevenElevenReturn {
+  const { address: eoaAddress, isConnected } = useAccount();
   const chainId = useChainId();
+
+  // Use provided player address or fall back to EOA
+  const address = options.playerAddress || eoaAddress;
+  const { sessionKeyClient, sessionKeyAddress } = options;
+
+  // Track session key rolling state
+  const [isRollingWithSessionKey, setIsRollingWithSessionKey] = useState(false);
 
   // Get the contract address for the current chain
   const contractAddress = useMemo(() => {
@@ -277,6 +313,17 @@ export function useSevenEleven(token: SupportedToken): UseSevenElevenReturn {
     },
   });
 
+  // Read authorized roller for this player
+  const { data: authorizedRoller, refetch: refetchAuthorizedRoller } = useReadContract({
+    address: contractAddress,
+    abi: SEVEN_ELEVEN_ABI,
+    functionName: 'getAuthorizedRoller',
+    args: address ? [address] : undefined,
+    query: {
+      enabled: isConnected && !!address && contractAddress !== '0x0000000000000000000000000000000000000000',
+    },
+  });
+
   // Write contracts
   const {
     writeContract: writeApprove,
@@ -306,6 +353,27 @@ export function useSevenEleven(token: SupportedToken): UseSevenElevenReturn {
     error: rollError,
   } = useWriteContract();
 
+  const {
+    writeContract: writeDepositAndAuthorize,
+    data: depositAndAuthorizeHash,
+    isPending: isDepositAndAuthorizePending,
+    error: depositAndAuthorizeError,
+  } = useWriteContract();
+
+  const {
+    writeContract: writeAuthorizeRoller,
+    data: authorizeHash,
+    isPending: isAuthorizePending,
+    error: authorizeError,
+  } = useWriteContract();
+
+  const {
+    writeContract: writeRevokeRoller,
+    data: revokeHash,
+    isPending: isRevokePending,
+    error: revokeError,
+  } = useWriteContract();
+
   // Wait for transaction confirmations and refetch on success
   const { isLoading: isApproveConfirming, isSuccess: isApproveSuccess } = useWaitForTransactionReceipt({
     hash: approveHash,
@@ -321,6 +389,18 @@ export function useSevenEleven(token: SupportedToken): UseSevenElevenReturn {
 
   const { isLoading: isRollConfirming, isSuccess: isRollSuccess } = useWaitForTransactionReceipt({
     hash: rollHash,
+  });
+
+  const { isLoading: isDepositAndAuthorizeConfirming, isSuccess: isDepositAndAuthorizeSuccess } = useWaitForTransactionReceipt({
+    hash: depositAndAuthorizeHash,
+  });
+
+  const { isLoading: isAuthorizeConfirming, isSuccess: isAuthorizeSuccess } = useWaitForTransactionReceipt({
+    hash: authorizeHash,
+  });
+
+  const { isLoading: isRevokeConfirming, isSuccess: isRevokeSuccess } = useWaitForTransactionReceipt({
+    hash: revokeHash,
   });
 
   // Refetch balances when transactions confirm
@@ -349,6 +429,26 @@ export function useSevenEleven(token: SupportedToken): UseSevenElevenReturn {
       refetchStats();
     }
   }, [isRollSuccess, refetchBalance, refetchStats]);
+
+  useEffect(() => {
+    if (isDepositAndAuthorizeSuccess) {
+      refetchBalance();
+      refetchAllowance();
+      refetchAuthorizedRoller();
+    }
+  }, [isDepositAndAuthorizeSuccess, refetchBalance, refetchAllowance, refetchAuthorizedRoller]);
+
+  useEffect(() => {
+    if (isAuthorizeSuccess) {
+      refetchAuthorizedRoller();
+    }
+  }, [isAuthorizeSuccess, refetchAuthorizedRoller]);
+
+  useEffect(() => {
+    if (isRevokeSuccess) {
+      refetchAuthorizedRoller();
+    }
+  }, [isRevokeSuccess, refetchAuthorizedRoller]);
 
   // Functions
   const approve = useCallback(
@@ -396,6 +496,88 @@ export function useSevenEleven(token: SupportedToken): UseSevenElevenReturn {
       args: [token.address],
     });
   }, [writeRoll, token.address, contractAddress]);
+
+  // Deposit and authorize a roller in one transaction
+  const depositAndAuthorize = useCallback(
+    async (amount: bigint, roller: `0x${string}`) => {
+      writeDepositAndAuthorize({
+        address: contractAddress,
+        abi: SEVEN_ELEVEN_ABI,
+        functionName: 'depositAndAuthorize',
+        args: [token.address, amount, roller],
+      });
+    },
+    [writeDepositAndAuthorize, token.address, contractAddress]
+  );
+
+  // Authorize a roller (for existing deposits)
+  const authorizeRoller = useCallback(
+    async (roller: `0x${string}`) => {
+      writeAuthorizeRoller({
+        address: contractAddress,
+        abi: SEVEN_ELEVEN_ABI,
+        functionName: 'authorizeRoller',
+        args: [roller],
+      });
+    },
+    [writeAuthorizeRoller, contractAddress]
+  );
+
+  // Revoke the current authorized roller
+  const revokeRoller = useCallback(async () => {
+    writeRevokeRoller({
+      address: contractAddress,
+      abi: SEVEN_ELEVEN_ABI,
+      functionName: 'revokeRoller',
+      args: [],
+    });
+  }, [writeRevokeRoller, contractAddress]);
+
+  // Roll using session key (gasless, no wallet popup)
+  // The session key wallet calls rollFor(player, token) on behalf of the player
+  const rollWithSessionKey = useCallback(async (): Promise<`0x${string}` | undefined> => {
+    if (!sessionKeyClient) {
+      throw new Error('Session key client not available');
+    }
+    if (!address) {
+      throw new Error('Player address not available');
+    }
+
+    setIsRollingWithSessionKey(true);
+    try {
+      // Encode the rollFor function call - the session key wallet rolls on behalf of the player
+      const callData = encodeFunctionData({
+        abi: SEVEN_ELEVEN_ABI,
+        functionName: 'rollFor',
+        args: [address, token.address], // player address, token
+      });
+
+      // Send the user operation via session key
+      const userOpHash = await sessionKeyClient.sendUserOperation({
+        calls: [
+          {
+            to: contractAddress,
+            data: callData,
+          },
+        ],
+      });
+
+      console.log('RollFor submitted via session key:', userOpHash);
+
+      // Refetch balance after a short delay to allow the transaction to be mined
+      setTimeout(() => {
+        refetchBalance();
+        refetchStats();
+      }, 5000);
+
+      return userOpHash;
+    } catch (err) {
+      console.error('Session key rollFor failed:', err);
+      throw err;
+    } finally {
+      setIsRollingWithSessionKey(false);
+    }
+  }, [sessionKeyClient, address, token.address, contractAddress, refetchBalance, refetchStats]);
 
   // Watch for events to trigger refetches
   useWatchContractEvent({
@@ -471,13 +653,20 @@ export function useSevenEleven(token: SupportedToken): UseSevenElevenReturn {
 
   // Aggregate loading states
   const isApproving = isApprovePending || isApproveConfirming;
-  const isDepositing = isDepositPending || isDepositConfirming;
+  const isDepositing = isDepositPending || isDepositConfirming || isDepositAndAuthorizePending || isDepositAndAuthorizeConfirming;
   const isWithdrawing = isWithdrawPending || isWithdrawConfirming;
   const isRolling = isRollPending || isRollConfirming;
-  const isPending = isApproving || isDepositing || isWithdrawing || isRolling;
+  const isAuthorizing = isAuthorizePending || isAuthorizeConfirming || isRevokePending || isRevokeConfirming;
+  const isPending = isApproving || isDepositing || isWithdrawing || isRolling || isRollingWithSessionKey || isAuthorizing;
+
+  // Check if session key is available
+  const hasSessionKey = !!sessionKeyClient;
+
+  // Check if there's an authorized roller for this player
+  const hasAuthorizedRoller = authorizedRoller !== undefined && authorizedRoller !== '0x0000000000000000000000000000000000000000';
 
   // Aggregate errors
-  const error = approveError || depositError || withdrawError || rollError || null;
+  const error = approveError || depositError || withdrawError || rollError || depositAndAuthorizeError || authorizeError || revokeError || null;
 
   return {
     isConnected,
@@ -498,14 +687,24 @@ export function useSevenEleven(token: SupportedToken): UseSevenElevenReturn {
     allowance,
     needsApproval,
     houseLiquidity,
+    authorizedRoller: authorizedRoller as `0x${string}` | undefined,
+    hasAuthorizedRoller,
     approve,
     deposit,
+    depositAndAuthorize,
     withdraw,
     roll,
+    rollWithSessionKey,
+    authorizeRoller,
+    revokeRoller,
+    hasSessionKey,
+    sessionKeyAddress,
     isApproving,
     isDepositing,
     isWithdrawing,
     isRolling,
+    isRollingWithSessionKey,
+    isAuthorizing,
     isPending,
     approveHash,
     depositHash,
@@ -515,6 +714,7 @@ export function useSevenEleven(token: SupportedToken): UseSevenElevenReturn {
     refetchBalance,
     refetchStats,
     refetchEntropyFee,
+    refetchAuthorizedRoller,
   };
 }
 

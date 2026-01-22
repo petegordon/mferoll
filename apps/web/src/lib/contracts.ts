@@ -79,6 +79,75 @@ export const SEVEN_ELEVEN_ABI = [
     stateMutability: 'nonpayable',
     type: 'function',
   },
+  // Session key / delegation functions
+  {
+    inputs: [
+      { name: 'player', type: 'address' },
+      { name: 'token', type: 'address' },
+    ],
+    name: 'rollFor',
+    outputs: [{ name: 'sequenceNumber', type: 'uint64' }],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+  {
+    inputs: [{ name: 'roller', type: 'address' }],
+    name: 'authorizeRoller',
+    outputs: [],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'revokeRoller',
+    outputs: [],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+  {
+    inputs: [{ name: 'player', type: 'address' }],
+    name: 'getAuthorizedRoller',
+    outputs: [{ name: '', type: 'address' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [
+      { name: 'roller', type: 'address' },
+      { name: 'player', type: 'address' },
+    ],
+    name: 'canRollFor',
+    outputs: [{ name: '', type: 'bool' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  // Optimized deposit functions
+  {
+    inputs: [
+      { name: 'token', type: 'address' },
+      { name: 'amount', type: 'uint256' },
+      { name: 'roller', type: 'address' },
+    ],
+    name: 'depositAndAuthorize',
+    outputs: [],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+  {
+    inputs: [
+      { name: 'token', type: 'address' },
+      { name: 'amount', type: 'uint256' },
+      { name: 'roller', type: 'address' },
+      { name: 'deadline', type: 'uint256' },
+      { name: 'v', type: 'uint8' },
+      { name: 'r', type: 'bytes32' },
+      { name: 's', type: 'bytes32' },
+    ],
+    name: 'depositAndAuthorizeWithPermit',
+    outputs: [],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
   {
     inputs: [],
     name: 'getEntropyFee',
@@ -295,6 +364,24 @@ export const SEVEN_ELEVEN_ABI = [
     name: 'NewSession',
     type: 'event',
   },
+  {
+    anonymous: false,
+    inputs: [
+      { indexed: true, name: 'player', type: 'address' },
+      { indexed: true, name: 'roller', type: 'address' },
+    ],
+    name: 'RollerAuthorized',
+    type: 'event',
+  },
+  {
+    anonymous: false,
+    inputs: [
+      { indexed: true, name: 'player', type: 'address' },
+      { indexed: true, name: 'previousRoller', type: 'address' },
+    ],
+    name: 'RollerRevoked',
+    type: 'event',
+  },
 ] as const;
 
 // Token addresses by network
@@ -318,7 +405,7 @@ export const TOKEN_ADDRESSES = TOKEN_ADDRESSES_BY_CHAIN[CHAIN_ID.BASE_MAINNET];
 // SevenEleven contract addresses by network
 export const SEVEN_ELEVEN_ADDRESS_BY_CHAIN = {
   [CHAIN_ID.BASE_MAINNET]: '0x0000000000000000000000000000000000000000' as `0x${string}`, // TODO: Deploy to mainnet
-  [CHAIN_ID.BASE_SEPOLIA]: '0x9cc0EE4EAfCAA825c52353CDF8C96C51d772e20a' as `0x${string}`, // Deployed 2025-01-20 (v6 - stablecoin getBetAmount fix)
+  [CHAIN_ID.BASE_SEPOLIA]: '0xDb6A00B3EcA4a12f52B67DA121bA11ce8D5e07Df' as `0x${string}`, // Deployed 2025-01-21 (v7 - session key support)
 } as const;
 
 // Helper to get contract address for current chain

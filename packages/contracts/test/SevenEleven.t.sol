@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.28;
 
 import {Test, console} from "forge-std/Test.sol";
 import {SevenEleven} from "../src/SevenEleven.sol";
 import {ERC20Mock} from "./mocks/ERC20Mock.sol";
+import {ERC20PermitMock} from "./mocks/ERC20PermitMock.sol";
 import {MockUniswapV3Pool} from "./mocks/MockUniswapV3Pool.sol";
 import {MockChainlinkAggregator} from "./mocks/MockChainlinkAggregator.sol";
 import {MockEntropy} from "./mocks/MockEntropy.sol";
+import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
 
 contract SevenElevenTest is Test {
     SevenEleven public sevenEleven;
@@ -530,5 +532,335 @@ contract SevenElevenTest is Test {
         // Expected wins: 222 (22.22%)
         // Allow 5% tolerance: 172 to 272
         assertTrue(wins >= 170 && wins <= 280, "Win probability outside expected range");
+    }
+
+    // ============ Authorization Tests ============
+
+    function test_AuthorizeRoller() public {
+        address roller = address(4);
+
+        vm.prank(player);
+        sevenEleven.authorizeRoller(roller);
+
+        assertEq(sevenEleven.getAuthorizedRoller(player), roller);
+        assertTrue(sevenEleven.canRollFor(roller, player));
+    }
+
+    function test_AuthorizeRoller_ReplacePrevious() public {
+        address roller1 = address(4);
+        address roller2 = address(5);
+
+        vm.startPrank(player);
+        sevenEleven.authorizeRoller(roller1);
+        assertEq(sevenEleven.getAuthorizedRoller(player), roller1);
+
+        sevenEleven.authorizeRoller(roller2);
+        assertEq(sevenEleven.getAuthorizedRoller(player), roller2);
+        vm.stopPrank();
+
+        assertTrue(sevenEleven.canRollFor(roller2, player));
+        assertFalse(sevenEleven.canRollFor(roller1, player));
+    }
+
+    function test_RevokeRoller() public {
+        address roller = address(4);
+
+        vm.startPrank(player);
+        sevenEleven.authorizeRoller(roller);
+        assertTrue(sevenEleven.canRollFor(roller, player));
+
+        sevenEleven.revokeRoller();
+        assertFalse(sevenEleven.canRollFor(roller, player));
+        assertEq(sevenEleven.getAuthorizedRoller(player), address(0));
+        vm.stopPrank();
+    }
+
+    function test_RevokeRoller_WhenNoRoller() public {
+        // Should not revert even if no roller was set
+        vm.prank(player);
+        sevenEleven.revokeRoller();
+
+        assertEq(sevenEleven.getAuthorizedRoller(player), address(0));
+    }
+
+    // ============ RollFor Tests ============
+
+    function test_RollFor() public {
+        uint256 depositAmount = 10000e18;
+        address roller = address(4);
+
+        vm.startPrank(player);
+        sevenEleven.deposit(address(mferToken), depositAmount);
+        sevenEleven.authorizeRoller(roller);
+        vm.stopPrank();
+
+        uint256 balanceBefore = sevenEleven.getBalance(player, address(mferToken));
+
+        // Roller rolls on behalf of player
+        vm.prank(roller);
+        uint64 sequenceNumber = sevenEleven.rollFor(player, address(mferToken));
+
+        uint256 balanceAfter = sevenEleven.getBalance(player, address(mferToken));
+        assertTrue(balanceAfter < balanceBefore, "Player balance should decrease");
+
+        // Check pending roll stored with player address
+        (address pendingPlayer, address token, uint256 betAmount, ) = sevenEleven.pendingRolls(sequenceNumber);
+        assertEq(pendingPlayer, player);
+        assertEq(token, address(mferToken));
+        assertTrue(betAmount > 0);
+    }
+
+    function test_RollFor_Settlement() public {
+        uint256 depositAmount = 10000e18;
+        address roller = address(4);
+
+        vm.startPrank(player);
+        sevenEleven.deposit(address(mferToken), depositAmount);
+        sevenEleven.authorizeRoller(roller);
+        vm.stopPrank();
+
+        // Roller rolls
+        vm.prank(roller);
+        uint64 sequenceNumber = sevenEleven.rollFor(player, address(mferToken));
+
+        uint256 balanceBeforeSettle = sevenEleven.getBalance(player, address(mferToken));
+
+        // Win on 7 - payout goes to player
+        bytes32 randomness = _createRandomnessForDice(3, 4);
+        _fulfillPythEntropy(sequenceNumber, randomness);
+
+        uint256 balanceAfterSettle = sevenEleven.getBalance(player, address(mferToken));
+        assertTrue(balanceAfterSettle > balanceBeforeSettle, "Player balance should increase on win");
+
+        // Stats credited to player, not roller
+        SevenEleven.PlayerStats memory stats = sevenEleven.getPlayerStats(player);
+        assertEq(stats.totalWins, 1);
+    }
+
+    function test_RevertWhen_RollFor_NotAuthorized() public {
+        uint256 depositAmount = 10000e18;
+        address roller = address(4);
+        address unauthorizedRoller = address(5);
+
+        vm.startPrank(player);
+        sevenEleven.deposit(address(mferToken), depositAmount);
+        sevenEleven.authorizeRoller(roller);
+        vm.stopPrank();
+
+        // Unauthorized address tries to roll
+        vm.prank(unauthorizedRoller);
+        vm.expectRevert(SevenEleven.NotAuthorized.selector);
+        sevenEleven.rollFor(player, address(mferToken));
+    }
+
+    function test_RevertWhen_RollFor_NoAuthorization() public {
+        uint256 depositAmount = 10000e18;
+        address roller = address(4);
+
+        vm.prank(player);
+        sevenEleven.deposit(address(mferToken), depositAmount);
+
+        // No authorization set
+        vm.prank(roller);
+        vm.expectRevert(SevenEleven.NotAuthorized.selector);
+        sevenEleven.rollFor(player, address(mferToken));
+    }
+
+    // ============ DepositAndAuthorize Tests ============
+
+    function test_DepositAndAuthorize() public {
+        uint256 depositAmount = 1000e18;
+        address roller = address(4);
+
+        vm.prank(player);
+        sevenEleven.depositAndAuthorize(address(mferToken), depositAmount, roller);
+
+        assertEq(sevenEleven.getBalance(player, address(mferToken)), depositAmount);
+        assertEq(sevenEleven.getAuthorizedRoller(player), roller);
+        assertTrue(sevenEleven.canRollFor(roller, player));
+    }
+
+    function test_DepositAndAuthorize_ReplacePreviousRoller() public {
+        uint256 depositAmount = 1000e18;
+        address roller1 = address(4);
+        address roller2 = address(5);
+
+        vm.startPrank(player);
+        sevenEleven.depositAndAuthorize(address(mferToken), depositAmount, roller1);
+        assertEq(sevenEleven.getAuthorizedRoller(player), roller1);
+
+        // Second deposit replaces the roller
+        sevenEleven.depositAndAuthorize(address(mferToken), depositAmount, roller2);
+        assertEq(sevenEleven.getAuthorizedRoller(player), roller2);
+        assertEq(sevenEleven.getBalance(player, address(mferToken)), depositAmount * 2);
+        vm.stopPrank();
+    }
+
+    function test_RevertWhen_DepositAndAuthorize_BelowMinimum() public {
+        uint256 tooSmall = 1e15;
+        address roller = address(4);
+
+        vm.prank(player);
+        vm.expectRevert(SevenEleven.InsufficientDeposit.selector);
+        sevenEleven.depositAndAuthorize(address(mferToken), tooSmall, roller);
+    }
+
+    function test_RevertWhen_DepositAndAuthorize_UnsupportedToken() public {
+        address roller = address(4);
+
+        vm.prank(player);
+        vm.expectRevert(SevenEleven.TokenNotSupported.selector);
+        sevenEleven.depositAndAuthorize(address(drbToken), 1000e18, roller);
+    }
+
+    // ============ DepositAndAuthorizeWithPermit Tests ============
+
+    function test_DepositAndAuthorizeWithPermit() public {
+        // Deploy permit-supporting token
+        ERC20PermitMock usdcMock = new ERC20PermitMock("Mock USDC", "USDC", 6);
+
+        // Add as stablecoin
+        vm.prank(owner);
+        sevenEleven.addStablecoin(address(usdcMock));
+
+        // Add house liquidity for USDC
+        uint256 houseLiquidity = 1000000e6;
+        usdcMock.mint(owner, houseLiquidity);
+        vm.startPrank(owner);
+        usdcMock.approve(address(sevenEleven), houseLiquidity);
+        sevenEleven.depositHouseLiquidity(address(usdcMock), houseLiquidity);
+        vm.stopPrank();
+
+        // Mint tokens to player
+        uint256 depositAmount = 100e6; // 100 USDC
+        usdcMock.mint(player, depositAmount);
+
+        // Create private key for signing
+        uint256 playerPrivateKey = 0x1234;
+        address playerAddress = vm.addr(playerPrivateKey);
+
+        // Transfer tokens to the address with the private key
+        vm.prank(player);
+        usdcMock.transfer(playerAddress, depositAmount);
+
+        address roller = address(4);
+        uint256 deadline = block.timestamp + 1 hours;
+
+        // Get the permit signature
+        bytes32 permitTypehash = keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
+        bytes32 domainSeparator = usdcMock.DOMAIN_SEPARATOR();
+        uint256 nonce = usdcMock.nonces(playerAddress);
+
+        bytes32 structHash = keccak256(abi.encode(
+            permitTypehash,
+            playerAddress,
+            address(sevenEleven),
+            depositAmount,
+            nonce,
+            deadline
+        ));
+
+        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", domainSeparator, structHash));
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(playerPrivateKey, digest);
+
+        // Execute depositAndAuthorizeWithPermit
+        vm.prank(playerAddress);
+        sevenEleven.depositAndAuthorizeWithPermit(
+            address(usdcMock),
+            depositAmount,
+            roller,
+            deadline,
+            v,
+            r,
+            s
+        );
+
+        assertEq(sevenEleven.getBalance(playerAddress, address(usdcMock)), depositAmount);
+        assertEq(sevenEleven.getAuthorizedRoller(playerAddress), roller);
+        assertTrue(sevenEleven.canRollFor(roller, playerAddress));
+    }
+
+    function test_RevertWhen_DepositAndAuthorizeWithPermit_InvalidSignature() public {
+        // Deploy permit-supporting token
+        ERC20PermitMock usdcMock = new ERC20PermitMock("Mock USDC", "USDC", 6);
+
+        vm.prank(owner);
+        sevenEleven.addStablecoin(address(usdcMock));
+
+        uint256 depositAmount = 100e6;
+        usdcMock.mint(player, depositAmount);
+
+        address roller = address(4);
+        uint256 deadline = block.timestamp + 1 hours;
+
+        // Invalid signature (random values)
+        uint8 v = 27;
+        bytes32 r = bytes32(uint256(1));
+        bytes32 s = bytes32(uint256(2));
+
+        vm.prank(player);
+        vm.expectRevert(); // ERC20Permit will revert with invalid signature
+        sevenEleven.depositAndAuthorizeWithPermit(
+            address(usdcMock),
+            depositAmount,
+            roller,
+            deadline,
+            v,
+            r,
+            s
+        );
+    }
+
+    // ============ Integration Tests ============
+
+    function test_FullSessionKeyFlow() public {
+        uint256 depositAmount = 10000e18;
+        address sessionKeyWallet = address(4);
+
+        // 1. Player deposits and authorizes session key
+        vm.prank(player);
+        sevenEleven.depositAndAuthorize(address(mferToken), depositAmount, sessionKeyWallet);
+
+        // 2. Session key wallet rolls on behalf of player (gasless for player)
+        vm.prank(sessionKeyWallet);
+        uint64 sequenceNumber = sevenEleven.rollFor(player, address(mferToken));
+
+        // 3. Settlement credits player
+        bytes32 randomness = _createRandomnessForDice(3, 4); // Win on 7
+        _fulfillPythEntropy(sequenceNumber, randomness);
+
+        SevenEleven.PlayerStats memory stats = sevenEleven.getPlayerStats(player);
+        assertEq(stats.totalWins, 1);
+        assertEq(stats.totalSessions, 1);
+
+        // 4. Player can withdraw their winnings
+        uint256 balance = sevenEleven.getBalance(player, address(mferToken));
+        assertTrue(balance > 0);
+
+        vm.prank(player);
+        sevenEleven.withdraw(address(mferToken), balance);
+
+        assertEq(sevenEleven.getBalance(player, address(mferToken)), 0);
+        assertEq(mferToken.balanceOf(player), INITIAL_BALANCE - depositAmount + balance);
+    }
+
+    function test_MultipleRollsWithSessionKey() public {
+        uint256 depositAmount = 10000e18;
+        address sessionKeyWallet = address(4);
+
+        vm.prank(player);
+        sevenEleven.depositAndAuthorize(address(mferToken), depositAmount, sessionKeyWallet);
+
+        // Roll multiple times with session key
+        vm.startPrank(sessionKeyWallet);
+        for (uint256 i = 0; i < 5; i++) {
+            uint64 seq = sevenEleven.rollFor(player, address(mferToken));
+            bytes32 randomness = _createRandomnessForDice(2, 4); // Lose on 6
+            _fulfillPythEntropy(seq, randomness);
+        }
+        vm.stopPrank();
+
+        SevenEleven.PlayerStats memory stats = sevenEleven.getPlayerStats(player);
+        assertEq(stats.totalLosses, 5);
     }
 }
