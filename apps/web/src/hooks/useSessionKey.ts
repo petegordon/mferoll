@@ -56,6 +56,7 @@ interface StoredSessionKey {
 interface UseSessionKeyReturn {
   // Session key state
   hasValidSessionKey: boolean;
+  hasSessionKeyStored: boolean;
   isSessionKeyExpired: boolean;
   sessionKeyExpiresAt: number | undefined;
   isCreatingSessionKey: boolean;
