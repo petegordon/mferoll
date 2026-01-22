@@ -92,10 +92,12 @@ export default function Home() {
 
   // Log session key state changes (not every render)
   useEffect(() => {
-    if (hasValidSessionKey || isSessionKeyAuthorized) {
-      debugLog.info(`Session: valid=${hasValidSessionKey} auth=${isSessionKeyAuthorized}`);
+    if (sessionKeyAddress || authorizedRoller) {
+      debugLog.debug(`SK addr: ${sessionKeyAddress?.slice(0,10) || 'none'}`);
+      debugLog.debug(`Auth roller: ${authorizedRoller?.slice(0,10) || 'none'}`);
+      debugLog.debug(`Valid: ${hasValidSessionKey}, Auth: ${isSessionKeyAuthorized}`);
     }
-  }, [hasValidSessionKey, isSessionKeyAuthorized]);
+  }, [hasValidSessionKey, isSessionKeyAuthorized, sessionKeyAddress, authorizedRoller]);
 
   // Start cooldown timer (called when roll starts)
   const startCooldown = useCallback(() => {
@@ -142,8 +144,9 @@ export default function Home() {
       }
 
       // Try to use session key for gasless roll (only if authorized on contract)
+      debugLog.debug(`Roll: hasSK=${hasSessionKey} auth=${isSessionKeyAuthorized}`);
       if (hasSessionKey && isSessionKeyAuthorized) {
-        debugLog.info('Rolling with session key (gasless)');
+        debugLog.info('GASLESS roll');
         try {
           await rollWithSessionKey();
         } catch (err) {
@@ -159,7 +162,7 @@ export default function Home() {
         }
       } else {
         // Regular roll with wallet signature
-        debugLog.info('Rolling with wallet signature');
+        debugLog.info('WALLET roll');
         try {
           await contractRoll();
         } catch (err) {
@@ -224,8 +227,9 @@ export default function Home() {
       }
 
       // Try to use session key for gasless roll (only if authorized on contract)
+      debugLog.debug(`Roll: hasSK=${hasSessionKey} auth=${isSessionKeyAuthorized}`);
       if (hasSessionKey && isSessionKeyAuthorized) {
-        debugLog.info('Rolling with session key (gasless)');
+        debugLog.info('GASLESS roll');
         try {
           await rollWithSessionKey();
         } catch (err) {
@@ -241,7 +245,7 @@ export default function Home() {
         }
       } else {
         // Regular roll with wallet signature
-        debugLog.info('Rolling with wallet signature');
+        debugLog.info('WALLET roll');
         try {
           await contractRoll();
         } catch (err) {
