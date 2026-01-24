@@ -100,11 +100,13 @@ export default function Home() {
   // Light gray: balance >= $1 (minDeposit/2)
   // Light yellow: balance < $1
   // Red: balance < 2 rolls
+  // Critical (flashing): balance < 1 roll
   const getBalanceColor = useCallback(() => {
     if (!balance || !minDeposit || !betAmount) return 'gray';
     const halfMinDeposit = minDeposit / BigInt(2);
     const twoRolls = betAmount * BigInt(2);
 
+    if (balance < betAmount) return 'critical'; // Can't even roll once - flash!
     if (balance < twoRolls) return 'red';
     if (balance < halfMinDeposit) return 'yellow';
     if (balance < minDeposit) return 'gray';
@@ -405,6 +407,7 @@ export default function Home() {
             className={`px-3 py-2 rounded-lg transition-colors shadow-lg font-medium text-sm flex items-center gap-1.5 ${
               (() => {
                 const color = getBalanceColor();
+                if (color === 'critical') return `${darkMode ? 'bg-red-600 text-white' : 'bg-red-500 text-white'} animate-pulse`;
                 if (color === 'green') return darkMode ? 'bg-green-600 hover:bg-green-500 text-white' : 'bg-green-500 hover:bg-green-400 text-white';
                 if (color === 'gray') return darkMode ? 'bg-gray-500 hover:bg-gray-400 text-white' : 'bg-gray-400 hover:bg-gray-300 text-white';
                 if (color === 'yellow') return darkMode ? 'bg-yellow-600 hover:bg-yellow-500 text-white' : 'bg-yellow-500 hover:bg-yellow-400 text-white';
