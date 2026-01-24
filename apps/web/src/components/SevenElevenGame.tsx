@@ -339,12 +339,17 @@ export function SevenElevenGame({
           </div>
           {isSessionKeyAuthorized && (
             <div className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-              No transaction prompts on rolls
+              No wallet prompts when rolling
             </div>
           )}
           {needsAuthorization && (
             <div className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-              One-time authorization needed
+              Wallet will ask to authorize this device for gasless rolls
+            </div>
+          )}
+          {showEnableButton && !needsAuthorization && (
+            <div className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+              Creates a session key for this device (1 wallet prompt)
             </div>
           )}
           {sessionKeyError && (
@@ -534,6 +539,16 @@ export function SevenElevenGame({
                   : 'Deposit'}
               </button>
             </div>
+
+            {/* Explain what wallet prompts to expect */}
+            {depositStep === 'idle' && depositAmount && (
+              <div className={`mt-3 text-xs text-center ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                {needsApproval && !isSessionKeyAuthorized && 'Wallet will prompt: Approve → Deposit → Authorize device'}
+                {needsApproval && isSessionKeyAuthorized && 'Wallet will prompt: Approve → Deposit'}
+                {!needsApproval && !isSessionKeyAuthorized && 'Wallet will prompt: Deposit → Authorize device'}
+                {!needsApproval && isSessionKeyAuthorized && 'Wallet will prompt: Deposit'}
+              </div>
+            )}
 
             {(error || depositError) && (
               <div className="mt-3 text-red-500 text-sm text-center">
