@@ -46,6 +46,7 @@ export default function Home() {
   const [awaitingBlockchainResult, setAwaitingBlockchainResult] = useState(false);
   const [waitingTooLong, setWaitingTooLong] = useState(false);
   const isRollingRef = useRef(false);
+  const rollStartTimeRef = useRef(0);
 
   // Get contract address and public client for event polling
   const contractAddress = getSevenElevenAddress(chainId);
@@ -161,7 +162,8 @@ export default function Home() {
             const die2 = Number(args.die2);
             const won = Boolean(args.won);
 
-            debugLog.info(`Result: ${die1}+${die2}=${die1 + die2} ${won ? 'WIN!' : 'LOSS'}`);
+            const vrfTime = rollStartTimeRef.current > 0 ? Date.now() - rollStartTimeRef.current : 0;
+            debugLog.info(`Result: ${die1}+${die2}=${die1 + die2} ${won ? 'WIN!' : 'LOSS'} (VRF: ${vrfTime}ms)`);
 
             // Inject target faces into ongoing animation - D6 will transition from shake to throw
             // No need to increment rollCount - the animation is continuous
@@ -288,6 +290,7 @@ export default function Home() {
     // When not connected (demo mode), use random targets
     if (isConnected) {
       isRollingRef.current = true;
+      rollStartTimeRef.current = Date.now();
       setRollCount(c => c + 1);
       setTargetFaces(null); // Will be set when VRF result arrives
       setIsRolling(true);
@@ -365,6 +368,7 @@ export default function Home() {
     // When not connected (demo mode), use random targets
     if (isConnected) {
       isRollingRef.current = true;
+      rollStartTimeRef.current = Date.now();
       setRollCount(c => c + 1);
       setTargetFaces(null); // Will be set when VRF result arrives
       setIsRolling(true);

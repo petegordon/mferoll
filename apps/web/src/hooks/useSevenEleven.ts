@@ -561,6 +561,7 @@ export function useSevenEleven(
     }
 
     setIsRollingWithSessionKey(true);
+    const startTime = Date.now();
     try {
       // Encode the rollFor function call - the session key wallet rolls on behalf of the player
       const callData = encodeFunctionData({
@@ -568,6 +569,9 @@ export function useSevenEleven(
         functionName: 'rollFor',
         args: [address, token.address], // player address, token
       });
+
+      debugLog.debug(`Sending UserOp...`);
+      const sendStart = Date.now();
 
       // Send the user operation via session key
       const userOpHash = await sessionKeyClient.sendUserOperation({
@@ -579,7 +583,8 @@ export function useSevenEleven(
         ],
       });
 
-      debugLog.info(`RollFor submitted: ${userOpHash.slice(0, 10)}...`);
+      const sendTime = Date.now() - sendStart;
+      debugLog.info(`RollFor submitted: ${userOpHash.slice(0, 10)}... (${sendTime}ms)`);
 
       // Refetch balance after a short delay to allow the transaction to be mined
       setTimeout(() => {
