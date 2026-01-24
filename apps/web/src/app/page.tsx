@@ -158,7 +158,7 @@ export default function Home() {
           const latestLog = logs[logs.length - 1];
           const args = latestLog.args;
 
-          debugLog.debug(`Raw args: ${JSON.stringify(args)}`);
+          debugLog.debug(`die1=${args.die1} die2=${args.die2} won=${args.won}`);
 
           if (args.die1 !== undefined && args.die2 !== undefined) {
             const die1 = Number(args.die1);
