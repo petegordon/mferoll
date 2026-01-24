@@ -12,6 +12,29 @@ import {
 import { SEVEN_ELEVEN_CONSTANTS } from '@/lib/contracts';
 import { isZeroDevConfigured } from '@/lib/zerodev';
 
+// Format a token amount consistently:
+// - Always show at least 2 decimal places
+// - For small numbers, show enough decimals to display 2 non-zero digits
+// e.g., 5.0 → "5.00", 0.12 → "0.12", 0.0005 → "0.00050", 0.000033 → "0.000033"
+function formatTokenAmount(amount: string): string {
+  const num = Number(amount);
+  if (num === 0) return '0.00';
+
+  // For numbers >= 0.01, standard 2 decimal places is sufficient
+  if (num >= 0.01) {
+    return num.toFixed(2);
+  }
+
+  // For small numbers, find decimals needed for 2 non-zero digits
+  // -floor(log10(num)) = position of first non-zero digit after decimal
+  // +1 to show a second digit
+  const firstNonZeroPos = Math.floor(-Math.log10(num));
+  const decimalsNeeded = firstNonZeroPos + 1;
+
+  // Always at least 2 decimals, cap at 8
+  return num.toFixed(Math.max(2, Math.min(decimalsNeeded, 8)));
+}
+
 interface SessionKeyState {
   hasValidSessionKey: boolean;
   hasSessionKeyStored: boolean;
@@ -240,7 +263,7 @@ export function SevenElevenGame({
             Game Balance
           </span>
           <span className={`font-bold flex items-center gap-1.5 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-            {Number(balanceFormatted).toFixed(2)}
+            {formatTokenAmount(balanceFormatted)}
             <img src={currentToken.icon} alt={currentToken.symbol} className="w-5 h-5 rounded-full" />
           </span>
         </div>
@@ -249,7 +272,7 @@ export function SevenElevenGame({
             Bet per roll
           </span>
           <span className={`text-sm flex items-center gap-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-            ${SEVEN_ELEVEN_CONSTANTS.BET_USD} ({Number(betAmountFormatted).toFixed(4)}
+            ${SEVEN_ELEVEN_CONSTANTS.BET_USD} ({formatTokenAmount(betAmountFormatted)}
             <img src={currentToken.icon} alt={currentToken.symbol} className="w-4 h-4 rounded-full" />)
           </span>
         </div>
@@ -491,15 +514,15 @@ export function SevenElevenGame({
                 }`}
               >
                 <div className="flex items-center gap-1">
-                  Wallet: {Number(walletBalanceFormatted).toFixed(2)}
+                  Wallet: {formatTokenAmount(walletBalanceFormatted)}
                   <img src={currentToken.icon} alt={currentToken.symbol} className="w-3.5 h-3.5 rounded-full" />
                 </div>
                 <div className="flex items-center gap-1">
-                  Game Balance: {Number(balanceFormatted).toFixed(2)}
+                  Game Balance: {formatTokenAmount(balanceFormatted)}
                   <img src={currentToken.icon} alt={currentToken.symbol} className="w-3.5 h-3.5 rounded-full" />
                   {minAmountNeeded && minAmountNeeded > BigInt(0) && (
                     <span className={darkMode ? 'text-yellow-400' : 'text-yellow-600'}>
-                      (need ${Number(formatUnits(minAmountNeeded, currentToken.decimals)).toFixed(2)} more for $2)
+                      (need {formatTokenAmount(formatUnits(minAmountNeeded, currentToken.decimals))} more for $2)
                     </span>
                   )}
                 </div>
