@@ -22,6 +22,7 @@ import {
   SEVEN_ELEVEN_CONSTANTS,
   getTokenIconUrl,
   type PlayerStats,
+  type MemeWinnings,
 } from '@/lib/contracts';
 import { debugLog } from '@/components/DebugConsole';
 
@@ -32,37 +33,20 @@ export interface SupportedToken {
   name: string;
   decimals: number;
   icon: string;
+  isDepositToken: boolean;  // V2: Whether this can be deposited
+  isPayoutToken: boolean;   // V2: Whether this is a payout token
 }
 
-// Mainnet tokens
-const MAINNET_TOKENS: SupportedToken[] = [
-  {
-    address: TOKEN_ADDRESSES_BY_CHAIN[CHAIN_ID.BASE_MAINNET].MFERCOIN,
-    symbol: 'MFER',
-    name: 'mfercoin',
-    decimals: 18,
-    icon: 'https://coin-images.coingecko.com/coins/images/36550/small/mfercoin-logo.png',
-  },
-  {
-    address: TOKEN_ADDRESSES_BY_CHAIN[CHAIN_ID.BASE_MAINNET].DRB,
-    symbol: 'DRB',
-    name: 'drb',
-    decimals: 18,
-    icon: 'https://coin-images.coingecko.com/coins/images/54784/small/1000143570.jpg',
-  },
-  {
-    address: TOKEN_ADDRESSES_BY_CHAIN[CHAIN_ID.BASE_MAINNET].BANKR,
-    symbol: 'BANKR',
-    name: 'bankr',
-    decimals: 18,
-    icon: getTokenIconUrl(TOKEN_ADDRESSES_BY_CHAIN[CHAIN_ID.BASE_MAINNET].BANKR),
-  },
+// Deposit tokens (USDC, WETH only in V2)
+const MAINNET_DEPOSIT_TOKENS: SupportedToken[] = [
   {
     address: TOKEN_ADDRESSES_BY_CHAIN[CHAIN_ID.BASE_MAINNET].USDC,
     symbol: 'USDC',
     name: 'USD Coin',
     decimals: 6,
     icon: getTokenIconUrl(TOKEN_ADDRESSES_BY_CHAIN[CHAIN_ID.BASE_MAINNET].USDC),
+    isDepositToken: true,
+    isPayoutToken: false,
   },
   {
     address: TOKEN_ADDRESSES_BY_CHAIN[CHAIN_ID.BASE_MAINNET].WETH,
@@ -70,17 +54,52 @@ const MAINNET_TOKENS: SupportedToken[] = [
     name: 'Wrapped Ether',
     decimals: 18,
     icon: getTokenIconUrl(TOKEN_ADDRESSES_BY_CHAIN[CHAIN_ID.BASE_MAINNET].WETH),
+    isDepositToken: true,
+    isPayoutToken: false,
   },
 ];
 
-// Testnet tokens (Base Sepolia)
-const TESTNET_TOKENS: SupportedToken[] = [
+// Payout tokens (meme coins)
+const MAINNET_PAYOUT_TOKENS: SupportedToken[] = [
+  {
+    address: TOKEN_ADDRESSES_BY_CHAIN[CHAIN_ID.BASE_MAINNET].MFERCOIN,
+    symbol: 'MFER',
+    name: 'mfercoin',
+    decimals: 18,
+    icon: 'https://coin-images.coingecko.com/coins/images/36550/small/mfercoin-logo.png',
+    isDepositToken: false,
+    isPayoutToken: true,
+  },
+  {
+    address: TOKEN_ADDRESSES_BY_CHAIN[CHAIN_ID.BASE_MAINNET].BANKR,
+    symbol: 'BANKR',
+    name: 'bankr',
+    decimals: 18,
+    icon: getTokenIconUrl(TOKEN_ADDRESSES_BY_CHAIN[CHAIN_ID.BASE_MAINNET].BANKR),
+    isDepositToken: false,
+    isPayoutToken: true,
+  },
+  {
+    address: TOKEN_ADDRESSES_BY_CHAIN[CHAIN_ID.BASE_MAINNET].DRB,
+    symbol: 'DRB',
+    name: 'drb',
+    decimals: 18,
+    icon: 'https://coin-images.coingecko.com/coins/images/54784/small/1000143570.jpg',
+    isDepositToken: false,
+    isPayoutToken: true,
+  },
+];
+
+// Testnet deposit tokens
+const TESTNET_DEPOSIT_TOKENS: SupportedToken[] = [
   {
     address: TOKEN_ADDRESSES_BY_CHAIN[CHAIN_ID.BASE_SEPOLIA].USDC,
     symbol: 'USDC',
     name: 'USD Coin (Testnet)',
     decimals: 6,
     icon: 'https://assets-cdn.trustwallet.com/blockchains/base/assets/0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913/logo.png',
+    isDepositToken: true,
+    isPayoutToken: false,
   },
   {
     address: TOKEN_ADDRESSES_BY_CHAIN[CHAIN_ID.BASE_SEPOLIA].WETH,
@@ -88,26 +107,69 @@ const TESTNET_TOKENS: SupportedToken[] = [
     name: 'Wrapped Ether (Testnet)',
     decimals: 18,
     icon: 'https://assets-cdn.trustwallet.com/blockchains/base/assets/0x4200000000000000000000000000000000000006/logo.png',
+    isDepositToken: true,
+    isPayoutToken: false,
   },
 ];
 
-// Get tokens for a specific chain
-export function getTokensForChain(chainId: number): SupportedToken[] {
+// Testnet payout tokens (mock meme coins) - addresses set after deployment
+const TESTNET_PAYOUT_TOKENS: SupportedToken[] = [
+  {
+    address: TOKEN_ADDRESSES_BY_CHAIN[CHAIN_ID.BASE_SEPOLIA].MFERCOIN,
+    symbol: 'mMFER',
+    name: 'Mock MFER',
+    decimals: 18,
+    icon: 'https://coin-images.coingecko.com/coins/images/36550/small/mfercoin-logo.png',
+    isDepositToken: false,
+    isPayoutToken: true,
+  },
+  {
+    address: TOKEN_ADDRESSES_BY_CHAIN[CHAIN_ID.BASE_SEPOLIA].BANKR,
+    symbol: 'mBNKR',
+    name: 'Mock BNKR',
+    decimals: 18,
+    icon: getTokenIconUrl(TOKEN_ADDRESSES_BY_CHAIN[CHAIN_ID.BASE_MAINNET].BANKR),
+    isDepositToken: false,
+    isPayoutToken: true,
+  },
+  {
+    address: TOKEN_ADDRESSES_BY_CHAIN[CHAIN_ID.BASE_SEPOLIA].DRB,
+    symbol: 'mDRB',
+    name: 'Mock DRB',
+    decimals: 18,
+    icon: 'https://coin-images.coingecko.com/coins/images/54784/small/1000143570.jpg',
+    isDepositToken: false,
+    isPayoutToken: true,
+  },
+];
+
+// Get deposit tokens for a chain
+export function getDepositTokensForChain(chainId: number): SupportedToken[] {
   if (chainId === CHAIN_ID.BASE_SEPOLIA) {
-    return TESTNET_TOKENS;
+    return TESTNET_DEPOSIT_TOKENS;
   }
-  return MAINNET_TOKENS;
+  return MAINNET_DEPOSIT_TOKENS;
 }
 
-// Legacy export for backwards compatibility
-export const SUPPORTED_TOKENS = MAINNET_TOKENS;
+// Get payout tokens for a chain
+export function getPayoutTokensForChain(chainId: number): SupportedToken[] {
+  if (chainId === CHAIN_ID.BASE_SEPOLIA) {
+    return TESTNET_PAYOUT_TOKENS;
+  }
+  return MAINNET_PAYOUT_TOKENS;
+}
+
+// Get all tokens for a chain (for backwards compatibility)
+export function getTokensForChain(chainId: number): SupportedToken[] {
+  return [...getDepositTokensForChain(chainId), ...getPayoutTokensForChain(chainId)];
+}
+
+// Legacy export - deposit tokens only (V2: only USDC/WETH can be deposited)
+export const SUPPORTED_TOKENS = MAINNET_DEPOSIT_TOKENS;
 
 interface UseSevenElevenOptions {
-  // Optional player address override (for smart wallet mode)
   playerAddress?: `0x${string}`;
-  // Session key wallet address (the smart wallet that will call rollFor)
   sessionKeyAddress?: `0x${string}`;
-  // Optional session key client for gasless rolls
   sessionKeyClient?: {
     sendUserOperation: (params: { calls: Array<{ to: `0x${string}`; data: `0x${string}`; value?: bigint }> }) => Promise<`0x${string}`>;
   };
@@ -120,7 +182,7 @@ interface UseSevenElevenReturn {
   chainId: number;
   contractAddress: `0x${string}`;
 
-  // Player balance in contract
+  // Player balance in contract (deposit tokens only)
   balance: bigint | undefined;
   balanceFormatted: string;
 
@@ -130,6 +192,9 @@ interface UseSevenElevenReturn {
 
   // Player stats
   playerStats: PlayerStats | undefined;
+
+  // V2: Meme token winnings
+  memeWinnings: MemeWinnings | undefined;
 
   // Bet info
   betAmount: bigint | undefined;
@@ -145,7 +210,10 @@ interface UseSevenElevenReturn {
   allowance: bigint | undefined;
   needsApproval: boolean;
 
-  // House liquidity
+  // V2: Payout reserves
+  payoutReserves: { mfer: bigint; bnkr: bigint; drb: bigint } | undefined;
+
+  // House liquidity (for deposit tokens)
   houseLiquidity: bigint | undefined;
 
   // Session key / authorization
@@ -157,6 +225,7 @@ interface UseSevenElevenReturn {
   deposit: (amount: bigint) => Promise<void>;
   depositAndAuthorize: (amount: bigint, roller: `0x${string}`) => Promise<void>;
   withdraw: (amount: bigint) => Promise<void>;
+  withdrawAll: () => Promise<void>;  // V2: Withdraw all deposit tokens
   roll: () => Promise<void>;
   rollWithSessionKey: () => Promise<`0x${string}` | undefined>;
   authorizeRoller: (roller: `0x${string}`) => Promise<void>;
@@ -189,6 +258,8 @@ interface UseSevenElevenReturn {
   refetchStats: () => void;
   refetchEntropyFee: () => void;
   refetchAuthorizedRoller: () => void;
+  refetchMemeWinnings: () => void;
+  refetchPayoutReserves: () => void;
 }
 
 export function useSevenEleven(
@@ -199,14 +270,11 @@ export function useSevenEleven(
   const chainId = useChainId();
   const config = useConfig();
 
-  // Use provided player address or fall back to EOA
   const address = options.playerAddress || eoaAddress;
   const { sessionKeyClient, sessionKeyAddress } = options;
 
-  // Track session key rolling state
   const [isRollingWithSessionKey, setIsRollingWithSessionKey] = useState(false);
 
-  // Get the contract address for the current chain
   const contractAddress = useMemo(() => {
     return getSevenElevenAddress(chainId);
   }, [chainId]);
@@ -255,13 +323,52 @@ export function useSevenEleven(
     const stats = playerStatsRaw as {
       totalWins: bigint;
       totalLosses: bigint;
-      totalFeePaid: bigint;
+      totalDoublesWon: bigint;
       firstPlayTime: bigint;
       lastPlayTime: bigint;
       totalSessions: bigint;
     };
     return stats;
   }, [playerStatsRaw]);
+
+  // V2: Read meme token winnings
+  const {
+    data: memeWinningsRaw,
+    refetch: refetchMemeWinnings,
+  } = useReadContract({
+    address: contractAddress,
+    abi: SEVEN_ELEVEN_ABI,
+    functionName: 'getPlayerMemeWinnings',
+    args: address ? [address] : undefined,
+    query: {
+      enabled: isConnected && !!address && contractAddress !== '0x0000000000000000000000000000000000000000',
+    },
+  });
+
+  const memeWinnings = useMemo(() => {
+    if (!memeWinningsRaw) return undefined;
+    const [mfer, bnkr, drb] = memeWinningsRaw as [bigint, bigint, bigint];
+    return { mfer, bnkr, drb };
+  }, [memeWinningsRaw]);
+
+  // V2: Read payout reserves
+  const {
+    data: payoutReservesRaw,
+    refetch: refetchPayoutReserves,
+  } = useReadContract({
+    address: contractAddress,
+    abi: SEVEN_ELEVEN_ABI,
+    functionName: 'getPayoutReserves',
+    query: {
+      enabled: isConnected && contractAddress !== '0x0000000000000000000000000000000000000000',
+    },
+  });
+
+  const payoutReserves = useMemo(() => {
+    if (!payoutReservesRaw) return undefined;
+    const [mfer, bnkr, drb] = payoutReservesRaw as [bigint, bigint, bigint];
+    return { mfer, bnkr, drb };
+  }, [payoutReservesRaw]);
 
   // Read bet amount
   const { data: betAmount } = useReadContract({
@@ -270,7 +377,7 @@ export function useSevenEleven(
     functionName: 'getBetAmount',
     args: [token.address],
     query: {
-      enabled: isConnected && contractAddress !== '0x0000000000000000000000000000000000000000',
+      enabled: isConnected && contractAddress !== '0x0000000000000000000000000000000000000000' && token.isDepositToken,
     },
   });
 
@@ -281,11 +388,11 @@ export function useSevenEleven(
     functionName: 'getMinDeposit',
     args: [token.address],
     query: {
-      enabled: isConnected && contractAddress !== '0x0000000000000000000000000000000000000000',
+      enabled: isConnected && contractAddress !== '0x0000000000000000000000000000000000000000' && token.isDepositToken,
     },
   });
 
-  // Read entropy fee (required for Pyth VRF)
+  // Read entropy fee
   const { data: entropyFee, refetch: refetchEntropyFee } = useReadContract({
     address: contractAddress,
     abi: SEVEN_ELEVEN_ABI,
@@ -313,11 +420,11 @@ export function useSevenEleven(
     functionName: 'houseLiquidity',
     args: [token.address],
     query: {
-      enabled: isConnected && contractAddress !== '0x0000000000000000000000000000000000000000',
+      enabled: isConnected && contractAddress !== '0x0000000000000000000000000000000000000000' && token.isDepositToken,
     },
   });
 
-  // Read authorized roller for this player
+  // Read authorized roller
   const { data: authorizedRoller, refetch: refetchAuthorizedRoller } = useReadContract({
     address: contractAddress,
     abi: SEVEN_ELEVEN_ABI,
@@ -330,7 +437,6 @@ export function useSevenEleven(
 
   // Write contracts
   const {
-    writeContract: writeApprove,
     writeContractAsync: writeApproveAsync,
     data: approveHash,
     isPending: isApprovePending,
@@ -338,7 +444,6 @@ export function useSevenEleven(
   } = useWriteContract();
 
   const {
-    writeContract: writeDeposit,
     writeContractAsync: writeDepositAsync,
     data: depositHash,
     isPending: isDepositPending,
@@ -347,9 +452,15 @@ export function useSevenEleven(
 
   const {
     writeContract: writeWithdraw,
-    data: withdrawHash,
     isPending: isWithdrawPending,
     error: withdrawError,
+  } = useWriteContract();
+
+  const {
+    writeContractAsync: writeWithdrawAllAsync,
+    data: withdrawHash,
+    isPending: isWithdrawAllPending,
+    error: withdrawAllError,
   } = useWriteContract();
 
   const {
@@ -361,27 +472,23 @@ export function useSevenEleven(
 
   const {
     writeContract: writeDepositAndAuthorize,
-    data: depositAndAuthorizeHash,
     isPending: isDepositAndAuthorizePending,
     error: depositAndAuthorizeError,
   } = useWriteContract();
 
   const {
-    writeContract: writeAuthorizeRoller,
     writeContractAsync: writeAuthorizeRollerAsync,
-    data: authorizeHash,
     isPending: isAuthorizePending,
     error: authorizeError,
   } = useWriteContract();
 
   const {
     writeContract: writeRevokeRoller,
-    data: revokeHash,
     isPending: isRevokePending,
     error: revokeError,
   } = useWriteContract();
 
-  // Wait for transaction confirmations and refetch on success
+  // Transaction confirmations
   const { isLoading: isApproveConfirming, isSuccess: isApproveSuccess } = useWaitForTransactionReceipt({
     hash: approveHash,
   });
@@ -398,23 +505,9 @@ export function useSevenEleven(
     hash: rollHash,
   });
 
-  const { isLoading: isDepositAndAuthorizeConfirming, isSuccess: isDepositAndAuthorizeSuccess } = useWaitForTransactionReceipt({
-    hash: depositAndAuthorizeHash,
-  });
-
-  const { isLoading: isAuthorizeConfirming, isSuccess: isAuthorizeSuccess } = useWaitForTransactionReceipt({
-    hash: authorizeHash,
-  });
-
-  const { isLoading: isRevokeConfirming, isSuccess: isRevokeSuccess } = useWaitForTransactionReceipt({
-    hash: revokeHash,
-  });
-
-  // Refetch balances when transactions confirm
+  // Refetch on success
   useEffect(() => {
-    if (isApproveSuccess) {
-      refetchAllowance();
-    }
+    if (isApproveSuccess) refetchAllowance();
   }, [isApproveSuccess, refetchAllowance]);
 
   useEffect(() => {
@@ -425,37 +518,17 @@ export function useSevenEleven(
   }, [isDepositSuccess, refetchBalance, refetchAllowance]);
 
   useEffect(() => {
-    if (isWithdrawSuccess) {
-      refetchBalance();
-    }
+    if (isWithdrawSuccess) refetchBalance();
   }, [isWithdrawSuccess, refetchBalance]);
 
   useEffect(() => {
     if (isRollSuccess) {
       refetchBalance();
       refetchStats();
+      refetchMemeWinnings();
+      refetchPayoutReserves();
     }
-  }, [isRollSuccess, refetchBalance, refetchStats]);
-
-  useEffect(() => {
-    if (isDepositAndAuthorizeSuccess) {
-      refetchBalance();
-      refetchAllowance();
-      refetchAuthorizedRoller();
-    }
-  }, [isDepositAndAuthorizeSuccess, refetchBalance, refetchAllowance, refetchAuthorizedRoller]);
-
-  useEffect(() => {
-    if (isAuthorizeSuccess) {
-      refetchAuthorizedRoller();
-    }
-  }, [isAuthorizeSuccess, refetchAuthorizedRoller]);
-
-  useEffect(() => {
-    if (isRevokeSuccess) {
-      refetchAuthorizedRoller();
-    }
-  }, [isRevokeSuccess, refetchAuthorizedRoller]);
+  }, [isRollSuccess, refetchBalance, refetchStats, refetchMemeWinnings, refetchPayoutReserves]);
 
   // Functions
   const approve = useCallback(
@@ -466,7 +539,6 @@ export function useSevenEleven(
         functionName: 'approve',
         args: [contractAddress, amount],
       });
-      // Wait for transaction confirmation
       await waitForTransactionReceipt(config, { hash });
       refetchAllowance();
     },
@@ -481,7 +553,6 @@ export function useSevenEleven(
         functionName: 'deposit',
         args: [token.address, amount],
       });
-      // Wait for transaction confirmation
       await waitForTransactionReceipt(config, { hash });
       refetchBalance();
       refetchAllowance();
@@ -501,7 +572,18 @@ export function useSevenEleven(
     [writeWithdraw, token.address, contractAddress]
   );
 
-  // Roll function - house pays entropy fee, no ETH needed from user
+  // V2: Withdraw all deposit tokens (USDC + WETH)
+  const withdrawAll = useCallback(async () => {
+    const hash = await writeWithdrawAllAsync({
+      address: contractAddress,
+      abi: SEVEN_ELEVEN_ABI,
+      functionName: 'withdrawAll',
+      args: [],
+    });
+    await waitForTransactionReceipt(config, { hash });
+    refetchBalance();
+  }, [writeWithdrawAllAsync, contractAddress, config, refetchBalance]);
+
   const roll = useCallback(async () => {
     writeRoll({
       address: contractAddress,
@@ -511,7 +593,6 @@ export function useSevenEleven(
     });
   }, [writeRoll, token.address, contractAddress]);
 
-  // Deposit and authorize a roller in one transaction
   const depositAndAuthorize = useCallback(
     async (amount: bigint, roller: `0x${string}`) => {
       writeDepositAndAuthorize({
@@ -524,7 +605,6 @@ export function useSevenEleven(
     [writeDepositAndAuthorize, token.address, contractAddress]
   );
 
-  // Authorize a roller (for existing deposits)
   const authorizeRoller = useCallback(
     async (roller: `0x${string}`): Promise<void> => {
       const hash = await writeAuthorizeRollerAsync({
@@ -533,14 +613,12 @@ export function useSevenEleven(
         functionName: 'authorizeRoller',
         args: [roller],
       });
-      // Wait for transaction confirmation
       await waitForTransactionReceipt(config, { hash });
       refetchAuthorizedRoller();
     },
     [writeAuthorizeRollerAsync, contractAddress, config, refetchAuthorizedRoller]
   );
 
-  // Revoke the current authorized roller
   const revokeRoller = useCallback(async () => {
     writeRevokeRoller({
       address: contractAddress,
@@ -550,46 +628,34 @@ export function useSevenEleven(
     });
   }, [writeRevokeRoller, contractAddress]);
 
-  // Roll using session key (gasless, no wallet popup)
-  // The session key wallet calls rollFor(player, token) on behalf of the player
+  // Roll with session key
   const rollWithSessionKey = useCallback(async (): Promise<`0x${string}` | undefined> => {
-    if (!sessionKeyClient) {
-      throw new Error('Session key client not available');
-    }
-    if (!address) {
-      throw new Error('Player address not available');
-    }
+    if (!sessionKeyClient) throw new Error('Session key client not available');
+    if (!address) throw new Error('Player address not available');
 
     setIsRollingWithSessionKey(true);
-    const startTime = Date.now();
     try {
-      // Encode the rollFor function call - the session key wallet rolls on behalf of the player
       const callData = encodeFunctionData({
         abi: SEVEN_ELEVEN_ABI,
         functionName: 'rollFor',
-        args: [address, token.address], // player address, token
+        args: [address, token.address],
       });
 
       debugLog.debug(`Sending UserOp...`);
       const sendStart = Date.now();
 
-      // Send the user operation via session key
       const userOpHash = await sessionKeyClient.sendUserOperation({
-        calls: [
-          {
-            to: contractAddress,
-            data: callData,
-          },
-        ],
+        calls: [{ to: contractAddress, data: callData }],
       });
 
       const sendTime = Date.now() - sendStart;
       debugLog.info(`RollFor submitted: ${userOpHash.slice(0, 10)}... (${sendTime}ms)`);
 
-      // Refetch balance after a short delay to allow the transaction to be mined
       setTimeout(() => {
         refetchBalance();
         refetchStats();
+        refetchMemeWinnings();
+        refetchPayoutReserves();
       }, 5000);
 
       return userOpHash;
@@ -599,9 +665,9 @@ export function useSevenEleven(
     } finally {
       setIsRollingWithSessionKey(false);
     }
-  }, [sessionKeyClient, address, token.address, contractAddress, refetchBalance, refetchStats]);
+  }, [sessionKeyClient, address, token.address, contractAddress, refetchBalance, refetchStats, refetchMemeWinnings, refetchPayoutReserves]);
 
-  // Watch for events to trigger refetches
+  // Watch contract events
   useWatchContractEvent({
     address: contractAddress,
     abi: SEVEN_ELEVEN_ABI,
@@ -616,19 +682,21 @@ export function useSevenEleven(
     address: contractAddress,
     abi: SEVEN_ELEVEN_ABI,
     eventName: 'Withdrawn',
-    onLogs: () => {
-      refetchBalance();
-    },
+    onLogs: () => refetchBalance(),
   });
 
-  // Refetch balance immediately when roll is requested (balance is deducted on roll, not on settle)
+  useWatchContractEvent({
+    address: contractAddress,
+    abi: SEVEN_ELEVEN_ABI,
+    eventName: 'WithdrawnAll',
+    onLogs: () => refetchBalance(),
+  });
+
   useWatchContractEvent({
     address: contractAddress,
     abi: SEVEN_ELEVEN_ABI,
     eventName: 'RollRequested',
-    onLogs: () => {
-      refetchBalance();
-    },
+    onLogs: () => refetchBalance(),
   });
 
   useWatchContractEvent({
@@ -638,6 +706,8 @@ export function useSevenEleven(
     onLogs: () => {
       refetchBalance();
       refetchStats();
+      refetchMemeWinnings();
+      refetchPayoutReserves();
     },
   });
 
@@ -664,31 +734,26 @@ export function useSevenEleven(
 
   const entropyFeeFormatted = useMemo(() => {
     if (entropyFee === undefined) return '0';
-    return formatUnits(entropyFee, 18); // ETH has 18 decimals
+    return formatUnits(entropyFee, 18);
   }, [entropyFee]);
 
-  // Check if approval needed
   const needsApproval = useMemo(() => {
     if (allowance === undefined || minDeposit === undefined) return false;
     return allowance < minDeposit;
   }, [allowance, minDeposit]);
 
-  // Aggregate loading states
+  // Aggregate states
   const isApproving = isApprovePending || isApproveConfirming;
-  const isDepositing = isDepositPending || isDepositConfirming || isDepositAndAuthorizePending || isDepositAndAuthorizeConfirming;
-  const isWithdrawing = isWithdrawPending || isWithdrawConfirming;
+  const isDepositing = isDepositPending || isDepositConfirming || isDepositAndAuthorizePending;
+  const isWithdrawing = isWithdrawPending || isWithdrawAllPending || isWithdrawConfirming;
   const isRolling = isRollPending || isRollConfirming;
-  const isAuthorizing = isAuthorizePending || isAuthorizeConfirming || isRevokePending || isRevokeConfirming;
+  const isAuthorizing = isAuthorizePending || isRevokePending;
   const isPending = isApproving || isDepositing || isWithdrawing || isRolling || isRollingWithSessionKey || isAuthorizing;
 
-  // Check if session key is available
   const hasSessionKey = !!sessionKeyClient;
-
-  // Check if there's an authorized roller for this player
   const hasAuthorizedRoller = authorizedRoller !== undefined && authorizedRoller !== '0x0000000000000000000000000000000000000000';
 
-  // Aggregate errors
-  const error = approveError || depositError || withdrawError || rollError || depositAndAuthorizeError || authorizeError || revokeError || null;
+  const error = approveError || depositError || withdrawError || withdrawAllError || rollError || depositAndAuthorizeError || authorizeError || revokeError || null;
 
   return {
     isConnected,
@@ -700,6 +765,7 @@ export function useSevenEleven(
     walletBalance,
     walletBalanceFormatted,
     playerStats,
+    memeWinnings,
     betAmount,
     betAmountFormatted,
     minDeposit,
@@ -708,6 +774,7 @@ export function useSevenEleven(
     entropyFeeFormatted,
     allowance,
     needsApproval,
+    payoutReserves,
     houseLiquidity,
     authorizedRoller: authorizedRoller as `0x${string}` | undefined,
     hasAuthorizedRoller,
@@ -715,6 +782,7 @@ export function useSevenEleven(
     deposit,
     depositAndAuthorize,
     withdraw,
+    withdrawAll,
     roll,
     rollWithSessionKey,
     authorizeRoller,
@@ -737,13 +805,26 @@ export function useSevenEleven(
     refetchStats,
     refetchEntropyFee,
     refetchAuthorizedRoller,
+    refetchMemeWinnings,
+    refetchPayoutReserves,
   };
 }
 
-// Hook to get tokens for the current chain
-export function useSupportedTokens(): SupportedToken[] {
+// Hook to get deposit tokens for current chain
+export function useDepositTokens(): SupportedToken[] {
   const chainId = useChainId();
-  return useMemo(() => getTokensForChain(chainId), [chainId]);
+  return useMemo(() => getDepositTokensForChain(chainId), [chainId]);
+}
+
+// Hook to get payout tokens for current chain
+export function usePayoutTokens(): SupportedToken[] {
+  const chainId = useChainId();
+  return useMemo(() => getPayoutTokensForChain(chainId), [chainId]);
+}
+
+// Legacy hook - returns deposit tokens only
+export function useSupportedTokens(): SupportedToken[] {
+  return useDepositTokens();
 }
 
 // Helper hook for formatting token amounts

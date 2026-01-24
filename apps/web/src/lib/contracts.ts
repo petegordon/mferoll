@@ -49,7 +49,7 @@ export const ERC20_ABI = [
   },
 ] as const;
 
-// SevenEleven contract ABI (updated for Pyth Entropy)
+// SevenEleven V2 contract ABI
 export const SEVEN_ELEVEN_ABI = [
   // Player functions
   {
@@ -68,6 +68,13 @@ export const SEVEN_ELEVEN_ABI = [
       { name: 'amount', type: 'uint256' },
     ],
     name: 'withdraw',
+    outputs: [],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'withdrawAll',
     outputs: [],
     stateMutability: 'nonpayable',
     type: 'function',
@@ -191,7 +198,7 @@ export const SEVEN_ELEVEN_ABI = [
         components: [
           { name: 'totalWins', type: 'uint256' },
           { name: 'totalLosses', type: 'uint256' },
-          { name: 'totalFeePaid', type: 'uint256' },
+          { name: 'totalDoublesWon', type: 'uint256' },
           { name: 'firstPlayTime', type: 'uint256' },
           { name: 'lastPlayTime', type: 'uint256' },
           { name: 'totalSessions', type: 'uint256' },
@@ -209,11 +216,63 @@ export const SEVEN_ELEVEN_ABI = [
     outputs: [
       { name: 'totalWins', type: 'uint256' },
       { name: 'totalLosses', type: 'uint256' },
-      { name: 'totalFeePaid', type: 'uint256' },
+      { name: 'totalDoublesWon', type: 'uint256' },
       { name: 'firstPlayTime', type: 'uint256' },
       { name: 'lastPlayTime', type: 'uint256' },
       { name: 'totalSessions', type: 'uint256' },
     ],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  // Meme token winnings
+  {
+    inputs: [{ name: 'player', type: 'address' }],
+    name: 'getPlayerMemeWinnings',
+    outputs: [
+      { name: 'mfer', type: 'uint256' },
+      { name: 'bnkr', type: 'uint256' },
+      { name: 'drb', type: 'uint256' },
+    ],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [{ name: 'player', type: 'address' }],
+    name: 'totalMferWon',
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [{ name: 'player', type: 'address' }],
+    name: 'totalBnkrWon',
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [{ name: 'player', type: 'address' }],
+    name: 'totalDrbWon',
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  // Payout reserves
+  {
+    inputs: [],
+    name: 'getPayoutReserves',
+    outputs: [
+      { name: 'mfer', type: 'uint256' },
+      { name: 'bnkr', type: 'uint256' },
+      { name: 'drb', type: 'uint256' },
+    ],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [{ name: 'token', type: 'address' }],
+    name: 'payoutReserves',
+    outputs: [{ name: '', type: 'uint256' }],
     stateMutability: 'view',
     type: 'function',
   },
@@ -247,6 +306,13 @@ export const SEVEN_ELEVEN_ABI = [
   },
   {
     inputs: [{ name: 'token', type: 'address' }],
+    name: 'isDepositToken',
+    outputs: [{ name: '', type: 'bool' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [{ name: 'token', type: 'address' }],
     name: 'houseLiquidity',
     outputs: [{ name: '', type: 'uint256' }],
     stateMutability: 'view',
@@ -257,9 +323,9 @@ export const SEVEN_ELEVEN_ABI = [
     name: 'pendingRolls',
     outputs: [
       { name: 'player', type: 'address' },
-      { name: 'token', type: 'address' },
+      { name: 'depositToken', type: 'address' },
       { name: 'betAmount', type: 'uint256' },
-      { name: 'feeAmount', type: 'uint256' },
+      { name: 'betUsdCents', type: 'uint256' },
     ],
     stateMutability: 'view',
     type: 'function',
@@ -281,21 +347,64 @@ export const SEVEN_ELEVEN_ABI = [
   },
   {
     inputs: [],
-    name: 'WIN_MULTIPLIER',
+    name: 'LOSS_SKIM_CENTS',
     outputs: [{ name: '', type: 'uint256' }],
     stateMutability: 'view',
     type: 'function',
   },
   {
     inputs: [],
-    name: 'FEE_BPS',
+    name: 'WIN_7_11_BPS',
     outputs: [{ name: '', type: 'uint256' }],
     stateMutability: 'view',
     type: 'function',
   },
   {
     inputs: [],
-    name: 'FEE_RECIPIENT',
+    name: 'WIN_DOUBLES_BPS',
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  // Immutable addresses
+  {
+    inputs: [],
+    name: 'MFER',
+    outputs: [{ name: '', type: 'address' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'BNKR',
+    outputs: [{ name: '', type: 'address' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'DRB',
+    outputs: [{ name: '', type: 'address' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'GROK_WALLET',
+    outputs: [{ name: '', type: 'address' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'USDC',
+    outputs: [{ name: '', type: 'address' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'WETH',
     outputs: [{ name: '', type: 'address' }],
     stateMutability: 'view',
     type: 'function',
@@ -324,6 +433,16 @@ export const SEVEN_ELEVEN_ABI = [
   {
     anonymous: false,
     inputs: [
+      { indexed: true, name: 'player', type: 'address' },
+      { indexed: false, name: 'usdcAmount', type: 'uint256' },
+      { indexed: false, name: 'wethAmount', type: 'uint256' },
+    ],
+    name: 'WithdrawnAll',
+    type: 'event',
+  },
+  {
+    anonymous: false,
+    inputs: [
       { indexed: true, name: 'sequenceNumber', type: 'uint64' },
       { indexed: true, name: 'player', type: 'address' },
       { indexed: true, name: 'token', type: 'address' },
@@ -339,8 +458,10 @@ export const SEVEN_ELEVEN_ABI = [
       { indexed: true, name: 'player', type: 'address' },
       { indexed: false, name: 'die1', type: 'uint8' },
       { indexed: false, name: 'die2', type: 'uint8' },
-      { indexed: false, name: 'won', type: 'bool' },
-      { indexed: false, name: 'payout', type: 'uint256' },
+      { indexed: false, name: 'winType', type: 'uint8' },
+      { indexed: false, name: 'mferPayout', type: 'uint256' },
+      { indexed: false, name: 'bnkrPayout', type: 'uint256' },
+      { indexed: false, name: 'drbPayout', type: 'uint256' },
     ],
     name: 'RollSettled',
     type: 'event',
@@ -349,10 +470,10 @@ export const SEVEN_ELEVEN_ABI = [
     anonymous: false,
     inputs: [
       { indexed: true, name: 'player', type: 'address' },
-      { indexed: true, name: 'token', type: 'address' },
-      { indexed: false, name: 'amount', type: 'uint256' },
+      { indexed: false, name: 'drbAmount', type: 'uint256' },
+      { indexed: true, name: 'grokWallet', type: 'address' },
     ],
-    name: 'FeePaid',
+    name: 'LossSkim',
     type: 'event',
   },
   {
@@ -387,16 +508,29 @@ export const SEVEN_ELEVEN_ABI = [
 // Token addresses by network
 export const TOKEN_ADDRESSES_BY_CHAIN = {
   [CHAIN_ID.BASE_MAINNET]: {
+    // Deposit tokens
+    USDC: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as `0x${string}`,
+    WETH: '0x4200000000000000000000000000000000000006' as `0x${string}`,
+    // Payout tokens (meme coins)
     MFERCOIN: '0xE3086852A4B125803C815a158249ae468A3254Ca' as `0x${string}`,
     DRB: '0x3ec2156D4c0A9CBdAB4a016633b7BcF6a8d68Ea2' as `0x${string}`,
     BANKR: '0x22aF33FE49fD1Fa80c7149773dDe5890D3c76F3b' as `0x${string}`,
-    USDC: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as `0x${string}`,
-    WETH: '0x4200000000000000000000000000000000000006' as `0x${string}`,
   },
   [CHAIN_ID.BASE_SEPOLIA]: {
+    // Deposit tokens
     USDC: '0x036CbD53842c5426634e7929541eC2318f3dCF7e' as `0x${string}`,
     WETH: '0x4200000000000000000000000000000000000006' as `0x${string}`,
+    // Payout tokens (mock meme coins) - Deployed by script
+    MFERCOIN: '0x2D8956e3Fd63505DF56e619Ae6A59d3110716Ef8' as `0x${string}`,
+    DRB: '0x90130EcEF79282030537204124aAf71BA0c25854' as `0x${string}`,
+    BANKR: '0xDD51fBE09280E108d728e15046506bB859114357' as `0x${string}`,
   },
+} as const;
+
+// Grok wallet addresses
+export const GROK_WALLET_BY_CHAIN = {
+  [CHAIN_ID.BASE_MAINNET]: '0xb1058c959987e3513600eb5b4fd82aeee2a0e4f9' as `0x${string}`,
+  [CHAIN_ID.BASE_SEPOLIA]: '0xB1058c959987E3513600EB5b4fD82Aeee2a0E4F9' as `0x${string}`, // Using drb.eth for testnet
 } as const;
 
 // Legacy export for backwards compatibility
@@ -405,7 +539,7 @@ export const TOKEN_ADDRESSES = TOKEN_ADDRESSES_BY_CHAIN[CHAIN_ID.BASE_MAINNET];
 // SevenEleven contract addresses by network
 export const SEVEN_ELEVEN_ADDRESS_BY_CHAIN = {
   [CHAIN_ID.BASE_MAINNET]: '0x0000000000000000000000000000000000000000' as `0x${string}`, // TODO: Deploy to mainnet
-  [CHAIN_ID.BASE_SEPOLIA]: '0xDb6A00B3EcA4a12f52B67DA121bA11ce8D5e07Df' as `0x${string}`, // Deployed 2025-01-21 (v7 - session key support)
+  [CHAIN_ID.BASE_SEPOLIA]: '0xE64395bdea50A437831d7d5b0e95901f999A4EfA' as `0x${string}`, // Deployed by script
 } as const;
 
 // Helper to get contract address for current chain
@@ -420,25 +554,40 @@ export function getTokenIconUrl(address: string): string {
 }
 
 // Legacy export - will be deprecated
-export const SEVEN_ELEVEN_ADDRESS = '0x0000000000000000000000000000000000000000' as `0x${string}`;
+export const SEVEN_ELEVEN_ADDRESS = '0xc13078980fE702E1fb02A747096d5b395F9376C4' as `0x${string}`;
 
-// SevenEleven game constants
+// SevenEleven V2 game constants
 export const SEVEN_ELEVEN_CONSTANTS = {
-  BET_USD: 0.25,
-  MIN_DEPOSIT_USD: 2.00,
-  WIN_MULTIPLIER: 3,
-  FEE_PERCENTAGE: 10,
+  BET_USD: 0.40,
+  MIN_DEPOSIT_USD: 4.00,
+  WIN_7_11_MULTIPLIER: 1.5,
+  WIN_DOUBLES_MULTIPLIER: 3,
+  LOSS_SKIM_USD: 0.02,
   WINNING_SUMS: [7, 11] as const,
 } as const;
 
-// Player stats type
+// Win types enum matching contract
+export enum WinType {
+  None = 0,       // Loss
+  SevenOrEleven = 1,  // 1.5x
+  Doubles = 2,    // 3x
+}
+
+// Player stats type (V2)
 export interface PlayerStats {
   totalWins: bigint;
   totalLosses: bigint;
-  totalFeePaid: bigint;
+  totalDoublesWon: bigint;
   firstPlayTime: bigint;
   lastPlayTime: bigint;
   totalSessions: bigint;
+}
+
+// Meme token winnings
+export interface MemeWinnings {
+  mfer: bigint;
+  bnkr: bigint;
+  drb: bigint;
 }
 
 // Token info type

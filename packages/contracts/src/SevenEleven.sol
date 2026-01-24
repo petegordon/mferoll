@@ -21,14 +21,30 @@ interface IUniswapV3Pool {
 }
 
 /**
- * @title SevenEleven
- * @notice A 7/11 dice game with multi-token support using Pyth Entropy VRF
- * @dev Win on 7 or 11, lose on any other sum. 3x payout on wins, 10% fee.
+ * @title SevenEleven V2
+ * @notice A 7/11 dice game with new economics: bet USDC/WETH, win meme coins
+ * @dev V2 changes:
+ *      - Bet: $0.40 per roll (USDC or WETH)
+ *      - Min deposit: $4.00
+ *      - Win 7/11: 1.5x total payout (0.5x profit)
+ *      - Win Doubles: 3x total payout (2x profit)
+ *      - Loss: House keeps bet, $0.02 DRB sent to Grok wallet
+ *      - Winnings: 1/3 MFER, 1/3 BNKR, 1/3 DRB sent directly to wallet
  */
 contract SevenEleven is IEntropyConsumer, ReentrancyGuard, Ownable {
     using SafeERC20 for IERC20;
 
-    // Token configuration
+    // ============ Enums ============
+
+    enum WinType {
+        None,       // Loss
+        SevenOrEleven,  // 1.5x
+        Doubles     // 3x
+    }
+
+    // ============ Structs ============
+
+    // Token configuration for deposit tokens
     struct TokenConfig {
         address token;
         address uniswapPool;       // Uniswap V3 pool for token/WETH
@@ -41,7 +57,7 @@ contract SevenEleven is IEntropyConsumer, ReentrancyGuard, Ownable {
     struct PlayerStats {
         uint256 totalWins;
         uint256 totalLosses;
-        uint256 totalFeePaid;      // Total USD cents paid as fees
+        uint256 totalDoublesWon;   // Specifically track doubles wins
         uint256 firstPlayTime;
         uint256 lastPlayTime;
         uint256 totalSessions;
@@ -50,40 +66,68 @@ contract SevenEleven is IEntropyConsumer, ReentrancyGuard, Ownable {
     // Pending VRF roll request
     struct PendingRoll {
         address player;
-        address token;
-        uint256 betAmount;
-        uint256 feeAmount;
+        address depositToken;      // Token used for bet (USDC or WETH)
+        uint256 betAmount;         // Amount in deposit token
+        uint256 betUsdCents;       // Bet value in USD cents for payout calculation
     }
 
-    // Constants
-    uint256 public constant BET_USD_CENTS = 25;      // $0.25
-    uint256 public constant MIN_DEPOSIT_CENTS = 200; // $2.00
-    uint256 public constant FEE_BPS = 1000;          // 10%
+    // ============ Constants ============
+
+    uint256 public constant BET_USD_CENTS = 40;           // $0.40
+    uint256 public constant MIN_DEPOSIT_CENTS = 400;      // $4.00
+    uint256 public constant LOSS_SKIM_CENTS = 2;          // $0.02
+    uint256 public constant WIN_7_11_BPS = 5000;          // 0.5x additional (1.5x total)
+    uint256 public constant WIN_DOUBLES_BPS = 20000;      // 2x additional (3x total)
     uint256 public constant BPS_DENOMINATOR = 10000;
-    uint256 public constant WIN_MULTIPLIER = 3;      // 3x payout
     uint256 public constant SESSION_GAP = 1 hours;
-    uint32 public constant TWAP_PERIOD = 1800;       // 30 minutes for TWAP
+    uint32 public constant TWAP_PERIOD = 1800;            // 30 minutes for TWAP
 
-    // Pyth Entropy
+    // Reserve warning threshold (enough for ~100 max payouts)
+    uint256 public constant RESERVE_WARNING_THRESHOLD = 100 * BET_USD_CENTS * 3; // ~$120 worth
+
+    // ============ Immutables ============
+
     IEntropyV2 public immutable entropy;
-
-    // Addresses
-    address public immutable FEE_RECIPIENT;          // drb.eth
     address public immutable WETH;
+    address public immutable USDC;
     AggregatorV3Interface public immutable ethUsdPriceFeed;
 
-    // Token management
+    // Meme token addresses
+    address public immutable MFER;
+    address public immutable BNKR;
+    address public immutable DRB;
+
+    // Grok AI wallet for loss skim
+    address public immutable GROK_WALLET;
+
+    // ============ State Variables ============
+
+    // Token management for deposit tokens
     mapping(address => TokenConfig) public supportedTokens;
     address[] public tokenList;
 
-    // Player balances: player => token => balance
+    // Deposit token whitelist (only USDC and WETH)
+    mapping(address => bool) public isDepositToken;
+
+    // Payout reserves: meme token => balance
+    mapping(address => uint256) public payoutReserves;
+
+    // Mock token flag for testnet (uses 1:1 pricing)
+    mapping(address => bool) public isMockToken;
+
+    // Player balances: player => token => balance (only for deposit tokens)
     mapping(address => mapping(address => uint256)) public playerBalances;
 
-    // House liquidity: token => balance
+    // House liquidity: token => balance (for deposit tokens)
     mapping(address => uint256) public houseLiquidity;
 
     // Player statistics
     mapping(address => PlayerStats) public playerStats;
+
+    // Cumulative meme token winnings per player
+    mapping(address => uint256) public totalMferWon;
+    mapping(address => uint256) public totalBnkrWon;
+    mapping(address => uint256) public totalDrbWon;
 
     // Pending VRF requests: sequenceNumber => PendingRoll
     mapping(uint64 => PendingRoll) public pendingRolls;
@@ -91,25 +135,43 @@ contract SevenEleven is IEntropyConsumer, ReentrancyGuard, Ownable {
     // Authorized rollers: player => authorized roller address (for gasless rolls)
     mapping(address => address) public authorizedRollers;
 
-    // Events
+    // Stablecoin flag (1 token = $1)
+    mapping(address => bool) public isStablecoin;
+
+    // ============ Events ============
+
     event TokenAdded(address indexed token, address uniswapPool);
     event TokenRemoved(address indexed token);
     event Deposited(address indexed player, address indexed token, uint256 amount);
     event Withdrawn(address indexed player, address indexed token, uint256 amount);
+    event WithdrawnAll(address indexed player, uint256 usdcAmount, uint256 wethAmount);
     event RollRequested(uint64 indexed sequenceNumber, address indexed player, address indexed token, uint256 betAmount);
-    event RollSettled(uint64 indexed sequenceNumber, address indexed player, uint8 die1, uint8 die2, bool won, uint256 payout);
-    event FeePaid(address indexed player, address indexed token, uint256 amount);
+    event RollSettled(
+        uint64 indexed sequenceNumber,
+        address indexed player,
+        uint8 die1,
+        uint8 die2,
+        WinType winType,
+        uint256 mferPayout,
+        uint256 bnkrPayout,
+        uint256 drbPayout
+    );
+    event LossSkim(address indexed player, uint256 drbAmount, address indexed grokWallet);
     event NewSession(address indexed player, uint256 sessionNumber);
-    event HouseLiquidityDeposited(address indexed token, uint256 amount);
-    event HouseLiquidityWithdrawn(address indexed token, uint256 amount);
+    event PayoutReservesDeposited(address indexed token, uint256 amount);
+    event PayoutReservesWithdrawn(address indexed token, uint256 amount);
+    event ReservesLow(address indexed token, uint256 currentAmount, uint256 threshold);
     event RollerAuthorized(address indexed player, address indexed roller);
     event RollerRevoked(address indexed player, address indexed previousRoller);
+    event MockTokenSet(address indexed token, bool isMock);
 
-    // Errors
+    // ============ Errors ============
+
     error TokenNotSupported();
+    error TokenNotDepositToken();
     error InsufficientBalance();
     error InsufficientDeposit();
-    error InsufficientHouseLiquidity();
+    error InsufficientPayoutReserves();
     error InvalidAmount();
     error RollAlreadySettled();
     error PriceStale();
@@ -118,30 +180,40 @@ contract SevenEleven is IEntropyConsumer, ReentrancyGuard, Ownable {
     error InsufficientFee();
     error NotAuthorized();
 
+    // ============ Constructor ============
+
     constructor(
         address _entropy,
-        address _feeRecipient,
         address _ethUsdPriceFeed,
-        address _weth
+        address _weth,
+        address _usdc,
+        address _mfer,
+        address _bnkr,
+        address _drb,
+        address _grokWallet
     ) Ownable(msg.sender) {
         entropy = IEntropyV2(_entropy);
-        FEE_RECIPIENT = _feeRecipient;
         ethUsdPriceFeed = AggregatorV3Interface(_ethUsdPriceFeed);
         WETH = _weth;
+        USDC = _usdc;
+        MFER = _mfer;
+        BNKR = _bnkr;
+        DRB = _drb;
+        GROK_WALLET = _grokWallet;
+
+        // Mark deposit tokens
+        isDepositToken[_usdc] = true;
+        isDepositToken[_weth] = true;
     }
 
     // ============ Pyth Entropy Interface ============
 
-    /**
-     * @notice Returns the Entropy contract address (required by IEntropyConsumer)
-     */
     function getEntropy() internal view override returns (address) {
         return address(entropy);
     }
 
     /**
      * @notice Callback from Pyth Entropy when randomness is ready
-     * @dev This function MUST NOT revert
      */
     function entropyCallback(
         uint64 sequenceNumber,
@@ -150,65 +222,63 @@ contract SevenEleven is IEntropyConsumer, ReentrancyGuard, Ownable {
     ) internal override {
         PendingRoll storage pendingRoll = pendingRolls[sequenceNumber];
 
-        // If already settled or invalid, just return (don't revert)
         if (pendingRoll.player == address(0)) {
             return;
         }
 
         address player = pendingRoll.player;
-        address token = pendingRoll.token;
-        uint256 netBet = pendingRoll.betAmount;
+        address depositToken = pendingRoll.depositToken;
+        uint256 betAmount = pendingRoll.betAmount;
+        uint256 betUsdCents = pendingRoll.betUsdCents;
 
-        // Generate dice results (1-6 for each die) from single randomness
-        // Use different parts of the bytes32 for each die
+        // Generate dice results
         uint256 rand = uint256(randomNumber);
         uint8 die1 = uint8((rand % 6) + 1);
         uint8 die2 = uint8(((rand >> 128) % 6) + 1);
         uint8 sum = die1 + die2;
 
-        // Check win condition: 7 or 11
-        bool won = (sum == 7 || sum == 11);
+        // Determine win type
+        WinType winType = _determineWinType(die1, die2, sum);
 
         PlayerStats storage stats = playerStats[player];
-        uint256 payout = 0;
 
-        if (won) {
-            // 3x payout on the net bet
-            payout = netBet * WIN_MULTIPLIER;
+        uint256 mferPayout = 0;
+        uint256 bnkrPayout = 0;
+        uint256 drbPayout = 0;
 
-            // House pays the extra 2x
-            uint256 housePay = payout - netBet;
-            houseLiquidity[token] -= housePay;
-
-            // Credit player balance
-            playerBalances[player][token] += payout;
-
+        if (winType == WinType.Doubles) {
+            // 3x total payout
+            uint256 totalPayoutCents = betUsdCents * 3;
+            (mferPayout, bnkrPayout, drbPayout) = _sendMemeTokenPayout(player, totalPayoutCents);
+            stats.totalWins++;
+            stats.totalDoublesWon++;
+        } else if (winType == WinType.SevenOrEleven) {
+            // 1.5x total payout
+            uint256 totalPayoutCents = (betUsdCents * 3) / 2;
+            (mferPayout, bnkrPayout, drbPayout) = _sendMemeTokenPayout(player, totalPayoutCents);
             stats.totalWins++;
         } else {
-            // House takes the net bet
-            houseLiquidity[token] += netBet;
+            // Loss: house takes bet, send skim to Grok
+            _handleLoss(depositToken, betAmount);
             stats.totalLosses++;
         }
 
-        // Clear pending roll
         delete pendingRolls[sequenceNumber];
 
-        emit RollSettled(sequenceNumber, player, die1, die2, won, payout);
+        emit RollSettled(sequenceNumber, player, die1, die2, winType, mferPayout, bnkrPayout, drbPayout);
     }
 
     // ============ Player Functions ============
 
     /**
-     * @notice Deposit tokens to play
-     * @param token The token address to deposit
-     * @param amount The amount to deposit
+     * @notice Deposit tokens to play (USDC or WETH only)
      */
     function deposit(address token, uint256 amount) external nonReentrant {
+        if (!isDepositToken[token]) revert TokenNotDepositToken();
         TokenConfig storage config = supportedTokens[token];
         if (!config.enabled) revert TokenNotSupported();
         if (amount == 0) revert InvalidAmount();
 
-        // Check minimum deposit in USD
         uint256 usdCents = getTokenValueInCents(token, amount);
         if (usdCents < MIN_DEPOSIT_CENTS) revert InsufficientDeposit();
 
@@ -219,25 +289,20 @@ contract SevenEleven is IEntropyConsumer, ReentrancyGuard, Ownable {
     }
 
     /**
-     * @notice Deposit tokens and authorize a roller in one transaction
-     * @dev Combines deposit() + authorizeRoller() for optimal UX
-     * @param token The token address to deposit
-     * @param amount The amount to deposit
-     * @param roller The address to authorize for rolling
+     * @notice Deposit and authorize a roller in one transaction
      */
     function depositAndAuthorize(address token, uint256 amount, address roller) external nonReentrant {
+        if (!isDepositToken[token]) revert TokenNotDepositToken();
         TokenConfig storage config = supportedTokens[token];
         if (!config.enabled) revert TokenNotSupported();
         if (amount == 0) revert InvalidAmount();
 
-        // Check minimum deposit in USD
         uint256 usdCents = getTokenValueInCents(token, amount);
         if (usdCents < MIN_DEPOSIT_CENTS) revert InsufficientDeposit();
 
         IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
         playerBalances[msg.sender][token] += amount;
 
-        // Authorize the roller
         address previousRoller = authorizedRollers[msg.sender];
         authorizedRollers[msg.sender] = roller;
 
@@ -249,15 +314,7 @@ contract SevenEleven is IEntropyConsumer, ReentrancyGuard, Ownable {
     }
 
     /**
-     * @notice Deposit tokens using EIP-2612 permit and authorize a roller
-     * @dev Single transaction: permit signature + deposit + authorize
-     * @param token The token address (must support EIP-2612 permit)
-     * @param amount The amount to deposit
-     * @param roller The address to authorize for rolling
-     * @param deadline The permit deadline
-     * @param v The permit signature v
-     * @param r The permit signature r
-     * @param s The permit signature s
+     * @notice Deposit with permit and authorize
      */
     function depositAndAuthorizeWithPermit(
         address token,
@@ -268,22 +325,18 @@ contract SevenEleven is IEntropyConsumer, ReentrancyGuard, Ownable {
         bytes32 r,
         bytes32 s
     ) external nonReentrant {
+        if (!isDepositToken[token]) revert TokenNotDepositToken();
         TokenConfig storage config = supportedTokens[token];
         if (!config.enabled) revert TokenNotSupported();
         if (amount == 0) revert InvalidAmount();
 
-        // Check minimum deposit in USD
         uint256 usdCents = getTokenValueInCents(token, amount);
         if (usdCents < MIN_DEPOSIT_CENTS) revert InsufficientDeposit();
 
-        // Execute permit (gasless approval)
         IERC20Permit(token).permit(msg.sender, address(this), amount, deadline, v, r, s);
-
-        // Transfer tokens
         IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
         playerBalances[msg.sender][token] += amount;
 
-        // Authorize the roller
         address previousRoller = authorizedRollers[msg.sender];
         authorizedRollers[msg.sender] = roller;
 
@@ -295,9 +348,7 @@ contract SevenEleven is IEntropyConsumer, ReentrancyGuard, Ownable {
     }
 
     /**
-     * @notice Withdraw tokens from balance
-     * @param token The token address to withdraw
-     * @param amount The amount to withdraw
+     * @notice Withdraw specific token from game balance
      */
     function withdraw(address token, uint256 amount) external nonReentrant {
         if (amount == 0) revert InvalidAmount();
@@ -310,18 +361,33 @@ contract SevenEleven is IEntropyConsumer, ReentrancyGuard, Ownable {
     }
 
     /**
+     * @notice Withdraw all deposit tokens (USDC and WETH)
+     */
+    function withdrawAll() external nonReentrant {
+        uint256 usdcBal = playerBalances[msg.sender][USDC];
+        uint256 wethBal = playerBalances[msg.sender][WETH];
+
+        if (usdcBal > 0) {
+            playerBalances[msg.sender][USDC] = 0;
+            IERC20(USDC).safeTransfer(msg.sender, usdcBal);
+        }
+        if (wethBal > 0) {
+            playerBalances[msg.sender][WETH] = 0;
+            IERC20(WETH).safeTransfer(msg.sender, wethBal);
+        }
+
+        emit WithdrawnAll(msg.sender, usdcBal, wethBal);
+    }
+
+    /**
      * @notice Get the current Pyth Entropy fee
-     * @return fee The fee in wei required for randomness request
      */
     function getEntropyFee() public view returns (uint256 fee) {
         return entropy.getFeeV2();
     }
 
     /**
-     * @notice Roll the dice - costs $0.25 worth of tokens
-     * @dev House pays the Pyth Entropy fee from contract ETH balance
-     * @param token The token to bet with
-     * @return sequenceNumber The Pyth Entropy sequence number
+     * @notice Roll the dice
      */
     function roll(address token) external nonReentrant returns (uint64 sequenceNumber) {
         return _roll(msg.sender, token);
@@ -329,10 +395,6 @@ contract SevenEleven is IEntropyConsumer, ReentrancyGuard, Ownable {
 
     /**
      * @notice Roll on behalf of another player (requires authorization)
-     * @dev Used by session keys for gasless rolls
-     * @param player The player whose balance to use
-     * @param token The token to bet with
-     * @return sequenceNumber The Pyth Entropy sequence number
      */
     function rollFor(address player, address token) external nonReentrant returns (uint64 sequenceNumber) {
         if (authorizedRollers[player] != msg.sender) revert NotAuthorized();
@@ -340,9 +402,7 @@ contract SevenEleven is IEntropyConsumer, ReentrancyGuard, Ownable {
     }
 
     /**
-     * @notice Authorize an address to roll on your behalf
-     * @dev Used for session keys - only one authorized roller at a time
-     * @param roller The address to authorize
+     * @notice Authorize a roller for gasless rolls
      */
     function authorizeRoller(address roller) external {
         address previousRoller = authorizedRollers[msg.sender];
@@ -355,7 +415,7 @@ contract SevenEleven is IEntropyConsumer, ReentrancyGuard, Ownable {
     }
 
     /**
-     * @notice Revoke the currently authorized roller
+     * @notice Revoke roller authorization
      */
     function revokeRoller() external {
         address previousRoller = authorizedRollers[msg.sender];
@@ -365,61 +425,148 @@ contract SevenEleven is IEntropyConsumer, ReentrancyGuard, Ownable {
         }
     }
 
-    /**
-     * @notice Internal roll logic shared by roll() and rollFor()
-     * @param player The player whose balance to use
-     * @param token The token to bet with
-     * @return sequenceNumber The Pyth Entropy sequence number
-     */
+    // ============ Internal Game Logic ============
+
     function _roll(address player, address token) internal returns (uint64 sequenceNumber) {
+        if (!isDepositToken[token]) revert TokenNotDepositToken();
         TokenConfig storage config = supportedTokens[token];
         if (!config.enabled) revert TokenNotSupported();
 
-        // Check contract has enough ETH for Pyth Entropy fee
         uint256 entropyFee = entropy.getFeeV2();
         if (address(this).balance < entropyFee) revert InsufficientFee();
 
         uint256 betAmount = getBetAmount(token);
-        uint256 feeAmount = (betAmount * FEE_BPS) / BPS_DENOMINATOR;
-        uint256 totalRequired = betAmount;
+        if (playerBalances[player][token] < betAmount) revert InsufficientBalance();
 
-        if (playerBalances[player][token] < totalRequired) revert InsufficientBalance();
+        // Check payout reserves can cover max win (3x for doubles)
+        uint256 maxPayoutCents = BET_USD_CENTS * 3;
+        _checkPayoutReserves(maxPayoutCents);
 
-        // Calculate potential payout (3x bet minus fee)
-        uint256 netBet = betAmount - feeAmount;
-        uint256 potentialPayout = netBet * WIN_MULTIPLIER;
-        uint256 houseRisk = potentialPayout - netBet; // House pays 2x net bet on win
+        // Deduct bet from player
+        playerBalances[player][token] -= betAmount;
 
-        if (houseLiquidity[token] < houseRisk) revert InsufficientHouseLiquidity();
-
-        // Deduct bet from player balance
-        playerBalances[player][token] -= totalRequired;
-
-        // Transfer fee to recipient immediately
-        IERC20(token).safeTransfer(FEE_RECIPIENT, feeAmount);
-
-        // Update session tracking
+        // Update session
         _updateSession(player);
 
-        // Request randomness from Pyth Entropy (house pays the fee)
+        // Request randomness
         sequenceNumber = entropy.requestV2{value: entropyFee}();
 
         pendingRolls[sequenceNumber] = PendingRoll({
             player: player,
-            token: token,
-            betAmount: netBet, // Store net bet after fee
-            feeAmount: feeAmount
+            depositToken: token,
+            betAmount: betAmount,
+            betUsdCents: BET_USD_CENTS
         });
 
-        // Update stats
-        PlayerStats storage stats = playerStats[player];
-        stats.totalFeePaid += getTokenValueInCents(token, feeAmount);
-
         emit RollRequested(sequenceNumber, player, token, betAmount);
-        emit FeePaid(player, token, feeAmount);
     }
 
-    // ============ Session Tracking ============
+    /**
+     * @notice Determine win type from dice results
+     * @dev Doubles are checked first (higher payout)
+     */
+    function _determineWinType(uint8 die1, uint8 die2, uint8 sum) internal pure returns (WinType) {
+        // Check doubles first (higher payout)
+        if (die1 == die2) {
+            return WinType.Doubles;
+        }
+        // Then check 7 or 11
+        if (sum == 7 || sum == 11) {
+            return WinType.SevenOrEleven;
+        }
+        return WinType.None;
+    }
+
+    /**
+     * @notice Send meme token payout directly to player's wallet
+     * @param player The player's wallet address
+     * @param totalUsdCents Total payout value in USD cents
+     */
+    function _sendMemeTokenPayout(address player, uint256 totalUsdCents)
+        internal
+        returns (uint256 mferAmount, uint256 bnkrAmount, uint256 drbAmount)
+    {
+        // Split into thirds (1/3 each)
+        uint256 thirdCents = totalUsdCents / 3;
+
+        // Convert USD cents to token amounts
+        mferAmount = _centsToTokenAmount(MFER, thirdCents);
+        bnkrAmount = _centsToTokenAmount(BNKR, thirdCents);
+        // DRB gets remainder to ensure exact total
+        drbAmount = _centsToTokenAmount(DRB, totalUsdCents - (thirdCents * 2));
+
+        // Deduct from reserves
+        payoutReserves[MFER] -= mferAmount;
+        payoutReserves[BNKR] -= bnkrAmount;
+        payoutReserves[DRB] -= drbAmount;
+
+        // Transfer directly to player's wallet
+        IERC20(MFER).safeTransfer(player, mferAmount);
+        IERC20(BNKR).safeTransfer(player, bnkrAmount);
+        IERC20(DRB).safeTransfer(player, drbAmount);
+
+        // Track cumulative winnings
+        totalMferWon[player] += mferAmount;
+        totalBnkrWon[player] += bnkrAmount;
+        totalDrbWon[player] += drbAmount;
+    }
+
+    /**
+     * @notice Handle a loss: house takes bet, send skim to Grok
+     */
+    function _handleLoss(address depositToken, uint256 betAmount) internal {
+        // House takes the bet
+        houseLiquidity[depositToken] += betAmount;
+
+        // Send $0.02 DRB to Grok wallet
+        uint256 skimAmount = _centsToTokenAmount(DRB, LOSS_SKIM_CENTS);
+
+        if (payoutReserves[DRB] >= skimAmount) {
+            payoutReserves[DRB] -= skimAmount;
+            IERC20(DRB).safeTransfer(GROK_WALLET, skimAmount);
+            emit LossSkim(address(0), skimAmount, GROK_WALLET);
+        }
+    }
+
+    /**
+     * @notice Convert USD cents to token amount
+     */
+    function _centsToTokenAmount(address token, uint256 cents) internal view returns (uint256 amount) {
+        // For mock tokens on testnet, use 1:1 pricing ($0.01 per token)
+        if (isMockToken[token]) {
+            // 1 cent = 0.01 tokens with 18 decimals
+            // Actually, let's make mock tokens $0.001 each so amounts are reasonable
+            // 1 cent = 10 tokens
+            return cents * 10 * 1e18;
+        }
+
+        // Get token price in ETH
+        uint256 tokenEthPriceX96 = getTokenEthPrice(token);
+        uint256 ethUsdPrice = getEthUsdPrice();
+        uint8 decimals = IERC20Metadata(token).decimals();
+
+        // cents * tokenDecimals * ethPriceUnit * Q96
+        // divided by (100 * tokenEthPrice * ethUsdPrice)
+        uint256 numerator = cents * (10 ** decimals) * 1e8 * (uint256(1) << 96);
+        uint256 denominator = 100 * tokenEthPriceX96 * ethUsdPrice;
+
+        amount = numerator / denominator;
+    }
+
+    /**
+     * @notice Check if payout reserves can cover the maximum payout
+     */
+    function _checkPayoutReserves(uint256 maxPayoutCents) internal view {
+        uint256 thirdCents = maxPayoutCents / 3;
+
+        uint256 mferNeeded = _centsToTokenAmount(MFER, thirdCents);
+        uint256 bnkrNeeded = _centsToTokenAmount(BNKR, thirdCents);
+        uint256 drbNeeded = _centsToTokenAmount(DRB, maxPayoutCents - (thirdCents * 2));
+
+        if (payoutReserves[MFER] < mferNeeded) revert InsufficientPayoutReserves();
+        if (payoutReserves[BNKR] < bnkrNeeded) revert InsufficientPayoutReserves();
+        if (payoutReserves[DRB] < drbNeeded) revert InsufficientPayoutReserves();
+    }
 
     function _updateSession(address player) internal {
         PlayerStats storage stats = playerStats[player];
@@ -438,28 +585,18 @@ contract SevenEleven is IEntropyConsumer, ReentrancyGuard, Ownable {
 
     // ============ Price Oracle Functions ============
 
-    /**
-     * @notice Get the current ETH/USD price from Chainlink
-     * @return price ETH price in USD with 8 decimals
-     */
     function getEthUsdPrice() public view returns (uint256 price) {
         (, int256 answer, , uint256 updatedAt, ) = ethUsdPriceFeed.latestRoundData();
 
         if (answer <= 0) revert InvalidPrice();
-        if (block.timestamp - updatedAt > 3600) revert PriceStale(); // 1 hour staleness
+        if (block.timestamp - updatedAt > 3600) revert PriceStale();
 
         return uint256(answer);
     }
 
-    /**
-     * @notice Get token price in ETH using Uniswap V3 TWAP
-     * @param token The token address
-     * @return priceX96 Token price in ETH (Q64.96 format)
-     */
     function getTokenEthPrice(address token) public view returns (uint256 priceX96) {
-        // WETH is always 1:1 with ETH
         if (token == WETH) {
-            return uint256(1) << 96; // 1.0 in Q64.96 format
+            return uint256(1) << 96;
         }
 
         TokenConfig storage config = supportedTokens[token];
@@ -476,37 +613,20 @@ contract SevenEleven is IEntropyConsumer, ReentrancyGuard, Ownable {
         int56 tickCumulativeDelta = tickCumulatives[1] - tickCumulatives[0];
         int24 arithmeticMeanTick = int24(tickCumulativeDelta / int56(uint56(TWAP_PERIOD)));
 
-        // Convert tick to sqrtPriceX96
         uint160 sqrtPriceX96 = getSqrtRatioAtTick(arithmeticMeanTick);
-
-        // price = sqrtPriceX96^2 / 2^192
         uint256 priceX192 = uint256(sqrtPriceX96) * uint256(sqrtPriceX96);
 
         if (config.isToken0) {
-            // Token is token0, price is token0/token1 (token per WETH)
-            // We want WETH per token, so invert
             priceX96 = (uint256(1) << 192) / priceX192;
         } else {
-            // Token is token1, price is already token1/token0 = token per WETH
-            // Invert to get WETH per token
             priceX96 = priceX192 >> 96;
         }
     }
 
-    // Stablecoin addresses (1 token = $1)
-    mapping(address => bool) public isStablecoin;
-
-    /**
-     * @notice Get token value in USD cents
-     * @param token The token address
-     * @param amount The token amount
-     * @return cents Value in USD cents
-     */
     function getTokenValueInCents(address token, uint256 amount) public view returns (uint256 cents) {
         TokenConfig storage config = supportedTokens[token];
         if (!config.enabled) revert TokenNotSupported();
 
-        // Stablecoins: 1 token = $1 = 100 cents
         if (isStablecoin[token]) {
             return (amount * 100) / (10 ** config.decimals);
         }
@@ -521,16 +641,10 @@ contract SevenEleven is IEntropyConsumer, ReentrancyGuard, Ownable {
         cents = numerator / denominator;
     }
 
-    /**
-     * @notice Get the amount of tokens needed for the bet ($0.25)
-     * @param token The token address
-     * @return amount The token amount for $0.25 bet
-     */
     function getBetAmount(address token) public view returns (uint256 amount) {
         TokenConfig storage config = supportedTokens[token];
         if (!config.enabled) revert TokenNotSupported();
 
-        // Stablecoins: 1 token = $1, so $0.25 bet = 0.25 tokens
         if (isStablecoin[token]) {
             return (BET_USD_CENTS * (10 ** config.decimals)) / 100;
         }
@@ -545,89 +659,61 @@ contract SevenEleven is IEntropyConsumer, ReentrancyGuard, Ownable {
         amount = numerator / denominator;
     }
 
-    /**
-     * @notice Get the minimum deposit amount for a token ($2.00)
-     * @param token The token address
-     * @return amount The minimum deposit amount
-     */
     function getMinDeposit(address token) public view returns (uint256 amount) {
         return (getBetAmount(token) * MIN_DEPOSIT_CENTS) / BET_USD_CENTS;
     }
 
     // ============ View Functions ============
 
-    /**
-     * @notice Get player balance for a token
-     */
     function getBalance(address player, address token) external view returns (uint256) {
         return playerBalances[player][token];
     }
 
-    /**
-     * @notice Get player statistics
-     */
     function getPlayerStats(address player) external view returns (PlayerStats memory) {
         return playerStats[player];
     }
 
-    /**
-     * @notice Get all supported tokens
-     */
+    function getPlayerMemeWinnings(address player) external view returns (uint256 mfer, uint256 bnkr, uint256 drb) {
+        return (totalMferWon[player], totalBnkrWon[player], totalDrbWon[player]);
+    }
+
     function getSupportedTokens() external view returns (address[] memory) {
         return tokenList;
     }
 
-    /**
-     * @notice Check if token is supported
-     */
     function isTokenSupported(address token) external view returns (bool) {
         return supportedTokens[token].enabled;
     }
 
-    /**
-     * @notice Get the authorized roller for a player
-     * @param player The player address
-     * @return The authorized roller address (or address(0) if none)
-     */
     function getAuthorizedRoller(address player) external view returns (address) {
         return authorizedRollers[player];
     }
 
-    /**
-     * @notice Check if an address can roll on behalf of a player
-     * @param roller The potential roller address
-     * @param player The player address
-     * @return True if roller is authorized to roll for player
-     */
     function canRollFor(address roller, address player) external view returns (bool) {
         return authorizedRollers[player] == roller;
     }
 
+    function getPayoutReserves() external view returns (uint256 mfer, uint256 bnkr, uint256 drb) {
+        return (payoutReserves[MFER], payoutReserves[BNKR], payoutReserves[DRB]);
+    }
+
     // ============ Admin Functions ============
 
-    /**
-     * @notice Add WETH as a supported token (no pool needed, 1:1 with ETH)
-     */
     function addWeth() external onlyOwner {
         require(!supportedTokens[WETH].enabled, "WETH already added");
 
         supportedTokens[WETH] = TokenConfig({
             token: WETH,
-            uniswapPool: address(0), // Not needed for WETH
+            uniswapPool: address(0),
             decimals: 18,
             enabled: true,
             isToken0: false
         });
 
         tokenList.push(WETH);
-
         emit TokenAdded(WETH, address(0));
     }
 
-    /**
-     * @notice Add a stablecoin (1 token = $1, no price oracle needed)
-     * @param token The stablecoin address
-     */
     function addStablecoin(address token) external onlyOwner {
         require(token != address(0), "Invalid token");
         require(!supportedTokens[token].enabled, "Token already added");
@@ -636,7 +722,7 @@ contract SevenEleven is IEntropyConsumer, ReentrancyGuard, Ownable {
 
         supportedTokens[token] = TokenConfig({
             token: token,
-            uniswapPool: address(0), // Not needed for stablecoins
+            uniswapPool: address(0),
             decimals: decimals,
             enabled: true,
             isToken0: false
@@ -644,15 +730,9 @@ contract SevenEleven is IEntropyConsumer, ReentrancyGuard, Ownable {
 
         isStablecoin[token] = true;
         tokenList.push(token);
-
         emit TokenAdded(token, address(0));
     }
 
-    /**
-     * @notice Add a supported token
-     * @param token The token address
-     * @param uniswapPool The Uniswap V3 pool for token/WETH
-     */
     function addToken(address token, address uniswapPool) external onlyOwner {
         require(token != address(0), "Invalid token");
         require(token != WETH, "Use addWeth() for WETH");
@@ -663,9 +743,9 @@ contract SevenEleven is IEntropyConsumer, ReentrancyGuard, Ownable {
         address token0 = pool.token0();
         address token1 = pool.token1();
 
-        bool isToken0 = (token == token0);
-        require(isToken0 || token == token1, "Token not in pool");
-        require((isToken0 ? token1 : token0) == WETH, "Pool must be token/WETH");
+        bool _isToken0 = (token == token0);
+        require(_isToken0 || token == token1, "Token not in pool");
+        require((_isToken0 ? token1 : token0) == WETH, "Pool must be token/WETH");
 
         uint8 decimals = IERC20Metadata(token).decimals();
 
@@ -674,24 +754,18 @@ contract SevenEleven is IEntropyConsumer, ReentrancyGuard, Ownable {
             uniswapPool: uniswapPool,
             decimals: decimals,
             enabled: true,
-            isToken0: isToken0
+            isToken0: _isToken0
         });
 
         tokenList.push(token);
-
         emit TokenAdded(token, uniswapPool);
     }
 
-    /**
-     * @notice Remove a supported token
-     * @param token The token address
-     */
     function removeToken(address token) external onlyOwner {
         require(supportedTokens[token].enabled, "Token not supported");
 
         supportedTokens[token].enabled = false;
 
-        // Remove from tokenList
         for (uint256 i = 0; i < tokenList.length; i++) {
             if (tokenList[i] == token) {
                 tokenList[i] = tokenList[tokenList.length - 1];
@@ -704,40 +778,55 @@ contract SevenEleven is IEntropyConsumer, ReentrancyGuard, Ownable {
     }
 
     /**
-     * @notice Deposit house liquidity for a token
-     * @param token The token address
-     * @param amount The amount to deposit
+     * @notice Set mock token flag for testnet pricing
      */
+    function setMockToken(address token, bool _isMock) external onlyOwner {
+        isMockToken[token] = _isMock;
+        emit MockTokenSet(token, _isMock);
+    }
+
+    /**
+     * @notice Deposit payout reserves (meme coins for winning payouts)
+     */
+    function depositPayoutReserves(address token, uint256 amount) external {
+        require(token == MFER || token == BNKR || token == DRB, "Invalid payout token");
+
+        IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
+        payoutReserves[token] += amount;
+
+        emit PayoutReservesDeposited(token, amount);
+    }
+
+    /**
+     * @notice Withdraw payout reserves (owner only)
+     */
+    function withdrawPayoutReserves(address token, uint256 amount) external onlyOwner {
+        require(token == MFER || token == BNKR || token == DRB, "Invalid payout token");
+        require(payoutReserves[token] >= amount, "Insufficient reserves");
+
+        payoutReserves[token] -= amount;
+        IERC20(token).safeTransfer(msg.sender, amount);
+
+        emit PayoutReservesWithdrawn(token, amount);
+    }
+
     function depositHouseLiquidity(address token, uint256 amount) external {
         TokenConfig storage config = supportedTokens[token];
         if (!config.enabled) revert TokenNotSupported();
 
         IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
         houseLiquidity[token] += amount;
-
-        emit HouseLiquidityDeposited(token, amount);
     }
 
-    /**
-     * @notice Withdraw house liquidity (owner only)
-     * @param token The token address
-     * @param amount The amount to withdraw
-     */
     function withdrawHouseLiquidity(address token, uint256 amount) external onlyOwner {
-        if (houseLiquidity[token] < amount) revert InsufficientHouseLiquidity();
+        require(houseLiquidity[token] >= amount, "Insufficient house liquidity");
 
         houseLiquidity[token] -= amount;
         IERC20(token).safeTransfer(msg.sender, amount);
-
-        emit HouseLiquidityWithdrawn(token, amount);
     }
 
     // ============ Math Helpers ============
 
-    /**
-     * @notice Compute sqrt price from tick
-     * @dev From Uniswap V3 TickMath library (simplified)
-     */
     function getSqrtRatioAtTick(int24 tick) internal pure returns (uint160 sqrtPriceX96) {
         uint256 absTick = tick < 0 ? uint256(-int256(tick)) : uint256(int256(tick));
         require(absTick <= uint256(int256(type(int24).max)), "T");
@@ -768,31 +857,17 @@ contract SevenEleven is IEntropyConsumer, ReentrancyGuard, Ownable {
         sqrtPriceX96 = uint160((ratio >> 32) + (ratio % (1 << 32) == 0 ? 0 : 1));
     }
 
-    /**
-     * @notice Deposit ETH to cover Pyth Entropy fees
-     * @dev Anyone can deposit, but typically the house/owner does this
-     */
-    function depositEntropyFunds() external payable {
-        // Just receive ETH - no logic needed
-    }
+    function depositEntropyFunds() external payable {}
 
-    /**
-     * @notice Withdraw ETH from contract (owner only)
-     * @param amount Amount of ETH to withdraw
-     */
     function withdrawEntropyFunds(uint256 amount) external onlyOwner {
         require(address(this).balance >= amount, "Insufficient ETH balance");
         (bool success, ) = msg.sender.call{value: amount}("");
         require(success, "ETH transfer failed");
     }
 
-    /**
-     * @notice Get contract ETH balance for entropy fees
-     */
     function getEntropyBalance() external view returns (uint256) {
         return address(this).balance;
     }
 
-    // Allow contract to receive ETH
     receive() external payable {}
 }

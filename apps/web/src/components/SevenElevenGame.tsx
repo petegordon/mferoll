@@ -5,34 +5,36 @@ import { useAccount } from 'wagmi';
 import { formatUnits } from 'viem';
 import {
   useSevenEleven,
-  useSupportedTokens,
+  useDepositTokens,
+  usePayoutTokens,
   parseTokenAmount,
   type SupportedToken,
 } from '@/hooks/useSevenEleven';
 import { SEVEN_ELEVEN_CONSTANTS } from '@/lib/contracts';
 import { isZeroDevConfigured } from '@/lib/zerodev';
 
-// Format a token amount consistently:
-// - Always show at least 2 decimal places
-// - For small numbers, show enough decimals to display 2 non-zero digits
-// e.g., 5.0 → "5.00", 0.12 → "0.12", 0.0005 → "0.00050", 0.000033 → "0.000033"
+// Format a token amount consistently
 function formatTokenAmount(amount: string): string {
   const num = Number(amount);
   if (num === 0) return '0.00';
 
-  // For numbers >= 0.01, standard 2 decimal places is sufficient
   if (num >= 0.01) {
     return num.toFixed(2);
   }
 
-  // For small numbers, find decimals needed for 2 non-zero digits
-  // -floor(log10(num)) = position of first non-zero digit after decimal
-  // +1 to show a second digit
   const firstNonZeroPos = Math.floor(-Math.log10(num));
   const decimalsNeeded = firstNonZeroPos + 1;
 
-  // Always at least 2 decimals, cap at 8
   return num.toFixed(Math.max(2, Math.min(decimalsNeeded, 8)));
+}
+
+// Format large meme token amounts
+function formatMemeAmount(amount: bigint, decimals: number = 18): string {
+  const value = Number(formatUnits(amount, decimals));
+  if (value === 0) return '0';
+  if (value >= 1000000) return `${(value / 1000000).toFixed(2)}M`;
+  if (value >= 1000) return `${(value / 1000).toFixed(2)}K`;
+  return value.toFixed(2);
 }
 
 interface SessionKeyState {
@@ -56,16 +58,18 @@ export function SevenElevenGame({
   sessionKey,
 }: SevenElevenGameProps) {
   const { isConnected } = useAccount();
-  const supportedTokens = useSupportedTokens();
+  const depositTokens = useDepositTokens();
+  const payoutTokens = usePayoutTokens();
   const [selectedToken, setSelectedToken] = useState<SupportedToken | null>(null);
   const [showDepositModal, setShowDepositModal] = useState(false);
   const [depositAmount, setDepositAmount] = useState('');
   const [showStats, setShowStats] = useState(false);
+  const [showWinnings, setShowWinnings] = useState(false);
 
-  // Set default token when tokens change (network switch)
-  const currentToken = selectedToken && supportedTokens.find(t => t.address === selectedToken.address)
+  // Use first deposit token as default
+  const currentToken = selectedToken && depositTokens.find(t => t.address === selectedToken.address)
     ? selectedToken
-    : supportedTokens[0];
+    : depositTokens[0];
 
   const {
     balance,
@@ -73,16 +77,15 @@ export function SevenElevenGame({
     walletBalance,
     walletBalanceFormatted,
     playerStats,
+    memeWinnings,
     betAmountFormatted,
     minDeposit,
     minDepositFormatted,
-    entropyFee,
-    entropyFeeFormatted,
     allowance,
     needsApproval,
     approve,
     deposit,
-    withdraw,
+    withdrawAll,
     authorizeRoller,
     authorizedRoller,
     isApproving,
@@ -92,101 +95,76 @@ export function SevenElevenGame({
     error,
   } = useSevenEleven(currentToken);
 
-  // Session key for gasless rolls (passed from parent to share state)
   const {
     hasValidSessionKey,
     hasSessionKeyStored,
     isSessionKeyExpired,
     isCreatingSessionKey,
     createSessionKey,
-    clearSessionKey,
     sessionKeyAddress,
     error: sessionKeyError,
   } = sessionKey;
 
-  // Check if session key is fully ready (both created AND authorized on contract)
   const isSessionKeyAuthorized = hasValidSessionKey &&
     sessionKeyAddress &&
     authorizedRoller &&
     authorizedRoller.toLowerCase() === sessionKeyAddress.toLowerCase();
 
-  // Need to authorize if we have a session key but it's not authorized on contract
   const needsAuthorization = hasValidSessionKey && sessionKeyAddress && !isSessionKeyAuthorized;
-
-  // Show Enable button when no session key exists or when expired
   const showEnableButton = !hasSessionKeyStored || isSessionKeyExpired;
-
   const isZeroDevEnabled = isZeroDevConfigured();
 
-  // Deposit validation error
   const [depositError, setDepositError] = useState<string | null>(null);
 
-  // Deposit flow step tracking
   type DepositStep = 'idle' | 'approving' | 'depositing' | 'authorizing' | 'done';
   const [depositStep, setDepositStep] = useState<DepositStep>('idle');
 
-  // Calculate minimum amount needed to reach $2 game balance
   const minAmountNeeded = minDeposit && balance !== undefined
     ? (balance >= minDeposit ? BigInt(0) : minDeposit - balance)
     : undefined;
 
-  // Handle deposit - chains approve → deposit → authorize in one flow
   const handleDeposit = useCallback(async () => {
     setDepositError(null);
     const amount = parseTokenAmount(depositAmount, currentToken.decimals);
     if (amount <= BigInt(0)) return;
 
-    // Validate: after deposit, game balance must be >= $2
     const currentBalance = balance || BigInt(0);
     const balanceAfterDeposit = currentBalance + amount;
     if (minDeposit && balanceAfterDeposit < minDeposit) {
       const neededAmount = minDeposit - currentBalance;
       const neededFormatted = formatUnits(neededAmount, currentToken.decimals);
-      setDepositError(`Deposit at least ${Number(neededFormatted).toFixed(2)} ${currentToken.symbol} to reach $2.00 game balance`);
+      setDepositError(`Deposit at least ${Number(neededFormatted).toFixed(2)} ${currentToken.symbol} to reach $${SEVEN_ELEVEN_CONSTANTS.MIN_DEPOSIT_USD.toFixed(2)} game balance`);
       return;
     }
 
     try {
-      // Step 1: Approve if needed
       if (needsApproval || (allowance !== undefined && allowance < amount)) {
         setDepositStep('approving');
         await approve(amount);
       }
 
-      // Step 2: Deposit
       setDepositStep('depositing');
       await deposit(amount);
 
-      // Step 3: Authorize session key (if ZeroDev enabled and key exists but not authorized)
       if (isZeroDevEnabled && sessionKeyAddress && !isSessionKeyAuthorized) {
         setDepositStep('authorizing');
         await authorizeRoller(sessionKeyAddress);
       }
 
-      // Success - close modal
       setDepositStep('done');
       setDepositAmount('');
       setShowDepositModal(false);
     } catch (err) {
       console.error('Deposit flow failed:', err);
-      // Error is already captured by the hook's error state
     } finally {
       setDepositStep('idle');
     }
   }, [depositAmount, currentToken.decimals, currentToken.symbol, balance, minDeposit, needsApproval, allowance, approve, deposit, isZeroDevEnabled, sessionKeyAddress, isSessionKeyAuthorized, authorizeRoller]);
 
-  // Handle session key creation and authorization
-  // 1. Create a ZeroDev session key (local, no wallet prompt)
-  // 2. Authorize the session key's wallet on the contract (one wallet prompt)
-  // After this, rolls will be gasless via rollFor()
   const handleCreateSessionKey = useCallback(async () => {
     try {
-      // Create the session key and get the kernel wallet address
       const kernelAddress = await createSessionKey();
       console.log('Session key created, kernel address:', kernelAddress);
-
-      // Authorize the kernel wallet to call rollFor on behalf of the player
-      // This requires one wallet signature from the user
       await authorizeRoller(kernelAddress);
       console.log('Session key authorized on contract');
     } catch (err) {
@@ -194,19 +172,21 @@ export function SevenElevenGame({
     }
   }, [createSessionKey, authorizeRoller]);
 
-  // Handle withdraw all
   const handleWithdrawAll = useCallback(async () => {
     if (balance && balance > BigInt(0)) {
-      await withdraw(balance);
+      await withdrawAll();
     }
-  }, [balance, withdraw]);
+  }, [balance, withdrawAll]);
 
-  // Calculate win rate
   const winRate =
     playerStats && (playerStats.totalWins + playerStats.totalLosses) > BigInt(0)
       ? Number(playerStats.totalWins * BigInt(100)) /
         Number(playerStats.totalWins + playerStats.totalLosses)
       : 0;
+
+  // Check if player has any meme winnings
+  const hasMemeWinnings = memeWinnings &&
+    (memeWinnings.mfer > BigInt(0) || memeWinnings.bnkr > BigInt(0) || memeWinnings.drb > BigInt(0));
 
   if (!isConnected) {
     return (
@@ -220,9 +200,9 @@ export function SevenElevenGame({
 
   return (
     <div className="w-full max-w-md mx-auto px-4">
-      {/* Token selector */}
+      {/* Token selector - Deposit tokens only */}
       <div className="flex items-center justify-center gap-2 mb-4 flex-wrap">
-        {supportedTokens.map((token) => (
+        {depositTokens.map((token) => (
           <button
             key={token.symbol}
             onClick={() => setSelectedToken(token)}
@@ -242,7 +222,6 @@ export function SevenElevenGame({
               alt={token.symbol}
               className="w-7 h-7 rounded-full"
               onError={(e) => {
-                // Fallback to text if image fails to load
                 const target = e.target as HTMLImageElement;
                 target.style.display = 'none';
                 target.parentElement!.innerHTML = `<span class="text-sm font-medium ${darkMode ? 'text-white' : 'text-gray-700'}">${token.symbol}</span>`;
@@ -272,7 +251,7 @@ export function SevenElevenGame({
             Bet per roll
           </span>
           <span className={`text-sm flex items-center gap-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-            ${SEVEN_ELEVEN_CONSTANTS.BET_USD} ({formatTokenAmount(betAmountFormatted)}
+            ${SEVEN_ELEVEN_CONSTANTS.BET_USD.toFixed(2)} ({formatTokenAmount(betAmountFormatted)}
             <img src={currentToken.icon} alt={currentToken.symbol} className="w-4 h-4 rounded-full" />)
           </span>
         </div>
@@ -300,6 +279,50 @@ export function SevenElevenGame({
           </button>
         </div>
       </div>
+
+      {/* V2: Cumulative Meme Token Winnings */}
+      {hasMemeWinnings && (
+        <div
+          className={`rounded-xl p-4 mb-4 ${
+            darkMode ? 'bg-gradient-to-r from-purple-900/50 to-pink-900/50' : 'bg-gradient-to-r from-purple-100 to-pink-100'
+          }`}
+        >
+          <div className="flex justify-between items-center mb-2">
+            <span className={`text-sm font-medium ${darkMode ? 'text-purple-300' : 'text-purple-700'}`}>
+              Total Meme Winnings
+            </span>
+            <button
+              onClick={() => setShowWinnings(!showWinnings)}
+              className={`text-xs ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}
+            >
+              {showWinnings ? 'Hide' : 'Show'}
+            </button>
+          </div>
+          {showWinnings && memeWinnings && (
+            <div className="grid grid-cols-3 gap-2 mt-2">
+              {payoutTokens.map((token) => {
+                const amount = token.symbol.includes('MFER') ? memeWinnings.mfer :
+                              token.symbol.includes('BNKR') ? memeWinnings.bnkr :
+                              memeWinnings.drb;
+                return (
+                  <div key={token.symbol} className="text-center">
+                    <img src={token.icon} alt={token.symbol} className="w-6 h-6 rounded-full mx-auto mb-1" />
+                    <div className={`text-xs font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                      {formatMemeAmount(amount)}
+                    </div>
+                    <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                      {token.symbol}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          <div className={`text-xs mt-2 ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}>
+            Winnings sent directly to your wallet
+          </div>
+        </div>
+      )}
 
       {/* Session Key Status (when ZeroDev is enabled) */}
       {isZeroDevEnabled && (
@@ -331,7 +354,6 @@ export function SevenElevenGame({
                   : 'Gasless Rolls Available'}
               </span>
             </div>
-            {/* Show Enable button when no session key exists or expired */}
             {showEnableButton && (
               <button
                 onClick={handleCreateSessionKey}
@@ -345,7 +367,6 @@ export function SevenElevenGame({
                 {isCreatingSessionKey ? 'Creating...' : isAuthorizing ? 'Authorizing...' : 'Enable'}
               </button>
             )}
-            {/* Show Authorize button when session key exists but not authorized on contract */}
             {needsAuthorization && sessionKeyAddress && (
               <button
                 onClick={() => authorizeRoller(sessionKeyAddress)}
@@ -420,22 +441,24 @@ export function SevenElevenGame({
               </div>
             </div>
             <div>
-              <span className={darkMode ? 'text-gray-400' : 'text-gray-500'}>Sessions</span>
-              <div className={`font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                {playerStats.totalSessions.toString()}
+              <span className={darkMode ? 'text-gray-400' : 'text-gray-500'}>Doubles Won</span>
+              <div className={`font-bold ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}>
+                {playerStats.totalDoublesWon.toString()}
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Game rules */}
+      {/* V2 Game rules */}
       <div
-        className={`text-center text-xs mt-4 ${
+        className={`text-center text-xs mt-4 space-y-1 ${
           darkMode ? 'text-gray-500' : 'text-gray-400'
         }`}
       >
-        Roll 7 or 11 to win 3x | 10% fee goes to drb.eth
+        <div>Win 7/11: {SEVEN_ELEVEN_CONSTANTS.WIN_7_11_MULTIPLIER}x | Win Doubles: {SEVEN_ELEVEN_CONSTANTS.WIN_DOUBLES_MULTIPLIER}x</div>
+        <div>Winnings: MFER + BNKR + DRB to wallet</div>
+        <div>${SEVEN_ELEVEN_CONSTANTS.LOSS_SKIM_USD.toFixed(2)} DRB to Grok on loss</div>
       </div>
 
       {/* Deposit Modal */}
@@ -470,7 +493,7 @@ export function SevenElevenGame({
                     setDepositError(null);
                   }}
                   placeholder={minAmountNeeded && minAmountNeeded > BigInt(0)
-                    ? `Need ${Number(formatUnits(minAmountNeeded, currentToken.decimals)).toFixed(2)} for $2 balance`
+                    ? `Need ${Number(formatUnits(minAmountNeeded, currentToken.decimals)).toFixed(2)} for $${SEVEN_ELEVEN_CONSTANTS.MIN_DEPOSIT_USD} balance`
                     : 'Enter amount'
                   }
                   className={`flex-1 px-3 py-2 rounded-lg border ${
@@ -522,7 +545,7 @@ export function SevenElevenGame({
                   <img src={currentToken.icon} alt={currentToken.symbol} className="w-3.5 h-3.5 rounded-full" />
                   {minAmountNeeded && minAmountNeeded > BigInt(0) && (
                     <span className={darkMode ? 'text-yellow-400' : 'text-yellow-600'}>
-                      (need {formatTokenAmount(formatUnits(minAmountNeeded, currentToken.decimals))} more for $2)
+                      (need {formatTokenAmount(formatUnits(minAmountNeeded, currentToken.decimals))} more for ${SEVEN_ELEVEN_CONSTANTS.MIN_DEPOSIT_USD})
                     </span>
                   )}
                 </div>
@@ -563,7 +586,6 @@ export function SevenElevenGame({
               </button>
             </div>
 
-            {/* Explain what wallet prompts to expect */}
             {depositStep === 'idle' && depositAmount && (
               <div className={`mt-3 text-xs text-center ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                 {needsApproval && !isSessionKeyAuthorized && 'Wallet will prompt: Approve → Deposit → Authorize device'}
