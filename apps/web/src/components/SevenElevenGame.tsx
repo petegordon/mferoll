@@ -51,6 +51,7 @@ export function SevenElevenGame({
     walletBalanceFormatted,
     playerStats,
     betAmountFormatted,
+    minDeposit,
     minDepositFormatted,
     entropyFee,
     entropyFeeFormatted,
@@ -101,16 +102,24 @@ export function SevenElevenGame({
   type DepositStep = 'idle' | 'approving' | 'depositing' | 'authorizing' | 'done';
   const [depositStep, setDepositStep] = useState<DepositStep>('idle');
 
+  // Calculate minimum amount needed to reach $2 game balance
+  const minAmountNeeded = minDeposit && balance !== undefined
+    ? (balance >= minDeposit ? BigInt(0) : minDeposit - balance)
+    : undefined;
+
   // Handle deposit - chains approve → deposit → authorize in one flow
   const handleDeposit = useCallback(async () => {
     setDepositError(null);
     const amount = parseTokenAmount(depositAmount, currentToken.decimals);
     if (amount <= BigInt(0)) return;
 
-    // Validate minimum deposit before submitting
-    const minDepositAmount = parseTokenAmount(minDepositFormatted, currentToken.decimals);
-    if (amount < minDepositAmount) {
-      setDepositError(`Minimum deposit is $2.00 (${Number(minDepositFormatted).toFixed(2)} ${currentToken.symbol})`);
+    // Validate: after deposit, game balance must be >= $2
+    const currentBalance = balance || BigInt(0);
+    const balanceAfterDeposit = currentBalance + amount;
+    if (minDeposit && balanceAfterDeposit < minDeposit) {
+      const neededAmount = minDeposit - currentBalance;
+      const neededFormatted = formatUnits(neededAmount, currentToken.decimals);
+      setDepositError(`Deposit at least ${Number(neededFormatted).toFixed(2)} ${currentToken.symbol} to reach $2.00 game balance`);
       return;
     }
 
@@ -141,7 +150,7 @@ export function SevenElevenGame({
     } finally {
       setDepositStep('idle');
     }
-  }, [depositAmount, currentToken.decimals, minDepositFormatted, currentToken.symbol, needsApproval, allowance, approve, deposit, isZeroDevEnabled, sessionKeyAddress, isSessionKeyAuthorized, authorizeRoller]);
+  }, [depositAmount, currentToken.decimals, currentToken.symbol, balance, minDeposit, needsApproval, allowance, approve, deposit, isZeroDevEnabled, sessionKeyAddress, isSessionKeyAuthorized, authorizeRoller]);
 
   // Handle session key creation and authorization
   // 1. Create a ZeroDev session key (local, no wallet prompt)
@@ -432,13 +441,31 @@ export function SevenElevenGame({
                     setDepositAmount(e.target.value);
                     setDepositError(null);
                   }}
-                  placeholder={`Min: ${Number(minDepositFormatted).toFixed(2)}`}
+                  placeholder={minAmountNeeded && minAmountNeeded > BigInt(0)
+                    ? `Need ${Number(formatUnits(minAmountNeeded, currentToken.decimals)).toFixed(2)} for $2 balance`
+                    : 'Enter amount'
+                  }
                   className={`flex-1 px-3 py-2 rounded-lg border ${
                     darkMode
                       ? 'bg-gray-700 border-gray-600 text-white'
                       : 'bg-white border-gray-300 text-gray-900'
                   }`}
                 />
+                <button
+                  onClick={() => {
+                    if (minAmountNeeded && minAmountNeeded > BigInt(0)) {
+                      setDepositAmount(formatUnits(minAmountNeeded, currentToken.decimals));
+                    }
+                  }}
+                  disabled={!minAmountNeeded || minAmountNeeded <= BigInt(0)}
+                  className={`px-3 py-2 rounded-lg text-sm disabled:opacity-50 ${
+                    darkMode
+                      ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  Min
+                </button>
                 <button
                   onClick={() =>
                     walletBalance &&
@@ -454,12 +481,23 @@ export function SevenElevenGame({
                 </button>
               </div>
               <div
-                className={`text-xs mt-1 flex items-center gap-1 ${
+                className={`text-xs mt-1 flex flex-col gap-0.5 ${
                   darkMode ? 'text-gray-500' : 'text-gray-400'
                 }`}
               >
-                Wallet: {Number(walletBalanceFormatted).toFixed(2)}
-                <img src={currentToken.icon} alt={currentToken.symbol} className="w-3.5 h-3.5 rounded-full" />
+                <div className="flex items-center gap-1">
+                  Wallet: {Number(walletBalanceFormatted).toFixed(2)}
+                  <img src={currentToken.icon} alt={currentToken.symbol} className="w-3.5 h-3.5 rounded-full" />
+                </div>
+                <div className="flex items-center gap-1">
+                  Game Balance: {Number(balanceFormatted).toFixed(2)}
+                  <img src={currentToken.icon} alt={currentToken.symbol} className="w-3.5 h-3.5 rounded-full" />
+                  {minAmountNeeded && minAmountNeeded > BigInt(0) && (
+                    <span className={darkMode ? 'text-yellow-400' : 'text-yellow-600'}>
+                      (need ${Number(formatUnits(minAmountNeeded, currentToken.decimals)).toFixed(2)} more for $2)
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
 

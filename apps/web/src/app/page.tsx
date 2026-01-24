@@ -74,7 +74,9 @@ export default function Home() {
   // Use session key client for rolls if available
   const {
     balance,
+    balanceFormatted,
     betAmount,
+    minDeposit,
     roll: contractRoll,
     rollWithSessionKey,
     isRolling: isContractRolling,
@@ -86,6 +88,22 @@ export default function Home() {
     // Pass session key client for gasless rolls
     sessionKeyClient: hasValidSessionKey ? sessionKeyClient : undefined,
   });
+
+  // Calculate balance status for color coding
+  // Light green: balance > $2 (minDeposit)
+  // Light gray: balance >= $1 (minDeposit/2)
+  // Light yellow: balance < $1
+  // Red: balance < 2 rolls
+  const getBalanceColor = useCallback(() => {
+    if (!balance || !minDeposit || !betAmount) return 'gray';
+    const halfMinDeposit = minDeposit / BigInt(2);
+    const twoRolls = betAmount * BigInt(2);
+
+    if (balance < twoRolls) return 'red';
+    if (balance < halfMinDeposit) return 'yellow';
+    if (balance < minDeposit) return 'gray';
+    return 'green';
+  }, [balance, minDeposit, betAmount]);
 
   // Check if session key is fully authorized on the contract
   const isSessionKeyAuthorized = hasValidSessionKey &&
@@ -334,22 +352,24 @@ export default function Home() {
             </svg>
           )}
         </button>
-        {/* Menu button - only show when connected */}
+        {/* Game Balance button - only show when connected */}
         {isConnected && (
           <button
             onClick={() => setMenuOpen(!menuOpen)}
-            className={`p-2 rounded-lg transition-colors shadow-lg ${
-              darkMode
-                ? 'bg-gray-500 hover:bg-gray-400 text-white'
-                : 'bg-gray-600 hover:bg-gray-500 text-white'
+            className={`px-3 py-2 rounded-lg transition-colors shadow-lg font-medium text-sm flex items-center gap-1.5 ${
+              (() => {
+                const color = getBalanceColor();
+                if (color === 'green') return darkMode ? 'bg-green-600 hover:bg-green-500 text-white' : 'bg-green-500 hover:bg-green-400 text-white';
+                if (color === 'gray') return darkMode ? 'bg-gray-500 hover:bg-gray-400 text-white' : 'bg-gray-400 hover:bg-gray-300 text-white';
+                if (color === 'yellow') return darkMode ? 'bg-yellow-600 hover:bg-yellow-500 text-white' : 'bg-yellow-500 hover:bg-yellow-400 text-white';
+                if (color === 'red') return darkMode ? 'bg-red-600 hover:bg-red-500 text-white' : 'bg-red-500 hover:bg-red-400 text-white';
+                return darkMode ? 'bg-gray-500 hover:bg-gray-400 text-white' : 'bg-gray-400 hover:bg-gray-300 text-white';
+              })()
             }`}
             aria-label="Open game menu"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-              <circle cx="12" cy="5" r="2"/>
-              <circle cx="12" cy="12" r="2"/>
-              <circle cx="12" cy="19" r="2"/>
-            </svg>
+            <span>{Number(balanceFormatted).toFixed(2)}</span>
+            <img src={currentToken.icon} alt={currentToken.symbol} className="w-4 h-4 rounded-full" />
           </button>
         )}
       </header>
