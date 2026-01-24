@@ -167,11 +167,12 @@ export default function Home() {
 
             debugLog.info(`Result: ${die1}+${die2}=${die1 + die2} ${won ? 'WIN!' : 'LOSS'}`);
 
+            // Set target faces and trigger new animation with correct values
             setTargetFaces({ die1, die2 });
+            setRollCount(c => c + 1); // Trigger new dice animation
             setDiceResult({ die1, die2, won });
             setAwaitingBlockchainResult(false);
-            isRollingRef.current = false;
-            setIsRolling(false);
+            // Keep isRolling true - let animation settle naturally
           }
         }
       } catch (err) {
@@ -294,25 +295,29 @@ export default function Home() {
       }
     }
 
-    // Generate placeholder target faces for animation
-    // These will be replaced by actual blockchain result when RollSettled event arrives
-    const die1 = Math.floor(Math.random() * 6) + 1;
-    const die2 = Math.floor(Math.random() * 6) + 1;
-
-    isRollingRef.current = true;
-    setRollCount(c => c + 1);
-    setTargetFaces({ die1, die2 });
-    setIsRolling(true);
-    setDiceResult(null);
+    // When connected, don't set target faces yet - wait for VRF result
+    // When not connected (demo mode), use random targets
     if (isConnected) {
+      isRollingRef.current = true;
+      setRollCount(c => c + 1);
+      setTargetFaces(null); // Will be set when VRF result arrives
+      setIsRolling(true);
+      setDiceResult(null);
       setAwaitingBlockchainResult(true);
+    } else {
+      const die1 = Math.floor(Math.random() * 6) + 1;
+      const die2 = Math.floor(Math.random() * 6) + 1;
+      isRollingRef.current = true;
+      setRollCount(c => c + 1);
+      setTargetFaces({ die1, die2 });
+      setIsRolling(true);
+      setDiceResult(null);
     }
     startCooldown();
   }, [canRoll, isRolling, isContractRolling, isRollingWithSessionKey, startCooldown, isConnected, balance, betAmount, contractRoll, hasSessionKey, isSessionKeyAuthorized, rollWithSessionKey]);
 
   const handleDiceSettled = useCallback(() => {
     console.log('Dice animation settled with target faces:', targetFaces);
-    // When connected, wait for blockchain result (RollSettled event)
     // When not connected (demo mode), use the local random result
     if (!isConnected) {
       isRollingRef.current = false;
@@ -321,8 +326,7 @@ export default function Home() {
         setDiceResult(targetFaces);
       }
     }
-    // If connected, keep rolling animation going until blockchain settles
-    // The RollSettled event handler will set the final result
+    // If connected, the VRF polling handles setting the result
   }, [targetFaces, isConnected]);
 
   // Cooldown timer
@@ -386,18 +390,23 @@ export default function Home() {
       }
     }
 
-    // Generate placeholder target faces for animation
-    // These will be replaced by actual blockchain result when RollSettled event arrives
-    const die1 = Math.floor(Math.random() * 6) + 1;
-    const die2 = Math.floor(Math.random() * 6) + 1;
-
-    isRollingRef.current = true;
-    setRollCount(c => c + 1);
-    setTargetFaces({ die1, die2 });
-    setIsRolling(true);
-    setDiceResult(null);
+    // When connected, don't set target faces yet - wait for VRF result
+    // When not connected (demo mode), use random targets
     if (isConnected) {
+      isRollingRef.current = true;
+      setRollCount(c => c + 1);
+      setTargetFaces(null); // Will be set when VRF result arrives
+      setIsRolling(true);
+      setDiceResult(null);
       setAwaitingBlockchainResult(true);
+    } else {
+      const die1 = Math.floor(Math.random() * 6) + 1;
+      const die2 = Math.floor(Math.random() * 6) + 1;
+      isRollingRef.current = true;
+      setRollCount(c => c + 1);
+      setTargetFaces({ die1, die2 });
+      setIsRolling(true);
+      setDiceResult(null);
     }
     startCooldown();
   }, [canRoll, isRolling, isContractRolling, isRollingWithSessionKey, startCooldown, isConnected, balance, betAmount, contractRoll, hasSessionKey, isSessionKeyAuthorized, rollWithSessionKey]);
