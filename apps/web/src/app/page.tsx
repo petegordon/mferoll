@@ -125,34 +125,44 @@ export default function Home() {
     address: contractAddress,
     abi: SEVEN_ELEVEN_ABI,
     eventName: 'RollSettled',
+    poll: true, // Force polling instead of websocket
+    pollingInterval: 2_000, // Poll every 2 seconds
     onLogs(logs) {
-      debugLog.debug(`RollSettled events received: ${logs.length}`);
+      debugLog.debug(`RollSettled: ${logs.length} events`);
       for (const log of logs) {
         try {
-          // Type the log properly for wagmi v2
-          const typedLog = log as unknown as {
-            args: {
-              sequenceNumber: bigint;
-              player: `0x${string}`;
-              die1: number;
-              die2: number;
-              won: boolean;
-              payout: bigint;
-            };
-          };
-          const args = typedLog.args;
+          // Log raw data for debugging
+          const rawLog = log as { args?: Record<string, unknown> };
+          debugLog.debug(`Raw args: ${JSON.stringify(rawLog.args)}`);
 
-          debugLog.debug(`Event player: ${args.player}, our address: ${address}`);
+          // Access args directly - wagmi v2 provides decoded args
+          const args = rawLog.args as {
+            sequenceNumber?: bigint;
+            player?: `0x${string}`;
+            die1?: bigint | number;
+            die2?: bigint | number;
+            won?: boolean;
+            payout?: bigint;
+          } | undefined;
+
+          if (!args) {
+            debugLog.warn('No args in event');
+            continue;
+          }
+
+          const eventPlayer = args.player?.toLowerCase();
+          const ourAddress = address?.toLowerCase();
+          debugLog.debug(`Player: ${eventPlayer}, Us: ${ourAddress}`);
 
           // Only process events for this player
-          if (args.player?.toLowerCase() === address?.toLowerCase()) {
+          if (eventPlayer && ourAddress && eventPlayer === ourAddress) {
             const die1 = Number(args.die1);
             const die2 = Number(args.die2);
-            const won = args.won;
+            const won = Boolean(args.won);
 
-            debugLog.info(`Blockchain result: ${die1} + ${die2} = ${die1 + die2} (${won ? 'WIN' : 'LOSS'})`);
+            debugLog.info(`Result: ${die1}+${die2}=${die1 + die2} ${won ? 'WIN!' : 'LOSS'}`);
 
-            // Update target faces with actual blockchain result
+            // Update with actual blockchain result
             setTargetFaces({ die1, die2 });
             setDiceResult({ die1, die2, won });
             setAwaitingBlockchainResult(false);
@@ -160,7 +170,7 @@ export default function Home() {
             setIsRolling(false);
           }
         } catch (err) {
-          debugLog.error(`Error parsing RollSettled event: ${err}`);
+          debugLog.error(`Event parse error: ${err}`);
         }
       }
     },
