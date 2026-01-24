@@ -3,8 +3,9 @@
 import dynamic from 'next/dynamic';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { TouchToStart } from '@/components/motion/TouchToStart';
-import { useAccount } from 'wagmi';
+import { useAccount, useWatchContractEvent, useChainId } from 'wagmi';
 import { useState, useCallback, useEffect, useRef } from 'react';
+import { SEVEN_ELEVEN_ABI, getSevenElevenAddress } from '@/lib/contracts';
 import { SevenElevenGame } from '@/components/SevenElevenGame';
 import { useSevenEleven, useSupportedTokens } from '@/hooks/useSevenEleven';
 import { useSessionKey } from '@/hooks/useSessionKey';
@@ -31,11 +32,12 @@ function needsMotionPermission(): boolean {
 }
 
 export default function Home() {
-  const { isConnected } = useAccount();
+  const { isConnected, address } = useAccount();
+  const chainId = useChainId();
   const [darkMode, setDarkMode] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [isRolling, setIsRolling] = useState(false);
-  const [diceResult, setDiceResult] = useState<{ die1: number; die2: number } | null>(null);
+  const [diceResult, setDiceResult] = useState<{ die1: number; die2: number; won?: boolean } | null>(null);
   const [targetFaces, setTargetFaces] = useState<{ die1: number; die2: number } | null>(null);
   const [hasStarted, setHasStarted] = useState(false);
   const [needsPermission, setNeedsPermission] = useState<boolean | null>(null); // null = checking
@@ -43,8 +45,12 @@ export default function Home() {
   const [shakeEnabled, setShakeEnabled] = useState(false);
   const [rollCount, setRollCount] = useState(0);
   const [cooldownRemaining, setCooldownRemaining] = useState(0);
+  const [awaitingBlockchainResult, setAwaitingBlockchainResult] = useState(false);
   const isRollingRef = useRef(false);
   const cooldownEndRef = useRef(0);
+
+  // Get contract address for event watching
+  const contractAddress = getSevenElevenAddress(chainId);
 
   // Blockchain integration
   const supportedTokens = useSupportedTokens();
@@ -110,6 +116,33 @@ export default function Home() {
     sessionKeyAddress &&
     authorizedRoller &&
     authorizedRoller.toLowerCase() === sessionKeyAddress.toLowerCase();
+
+  // Watch for RollSettled events to get actual dice results from blockchain
+  useWatchContractEvent({
+    address: contractAddress,
+    abi: SEVEN_ELEVEN_ABI,
+    eventName: 'RollSettled',
+    onLogs(logs) {
+      for (const log of logs) {
+        const args = (log as unknown as { args: { player: string; die1: number; die2: number; won: boolean } }).args;
+        // Only process events for this player
+        if (args.player.toLowerCase() === address?.toLowerCase()) {
+          const die1 = Number(args.die1);
+          const die2 = Number(args.die2);
+          const won = args.won;
+
+          debugLog.info(`Blockchain result: ${die1} + ${die2} = ${die1 + die2} (${won ? 'WIN' : 'LOSS'})`);
+
+          // Update target faces with actual blockchain result
+          setTargetFaces({ die1, die2 });
+          setDiceResult({ die1, die2, won });
+          setAwaitingBlockchainResult(false);
+          isRollingRef.current = false;
+          setIsRolling(false);
+        }
+      }
+    },
+  });
 
   // Log session key state changes (not every render)
   useEffect(() => {
@@ -193,7 +226,8 @@ export default function Home() {
       }
     }
 
-    // Generate target faces first
+    // Generate placeholder target faces for animation
+    // These will be replaced by actual blockchain result when RollSettled event arrives
     const die1 = Math.floor(Math.random() * 6) + 1;
     const die2 = Math.floor(Math.random() * 6) + 1;
 
@@ -202,18 +236,26 @@ export default function Home() {
     setTargetFaces({ die1, die2 });
     setIsRolling(true);
     setDiceResult(null);
-    startCooldown(); // Start 10s cooldown now
+    if (isConnected) {
+      setAwaitingBlockchainResult(true);
+    }
+    startCooldown();
   }, [canRoll, isRolling, isContractRolling, isRollingWithSessionKey, startCooldown, isConnected, balance, betAmount, contractRoll, hasSessionKey, isSessionKeyAuthorized, rollWithSessionKey]);
 
   const handleDiceSettled = useCallback(() => {
-    console.log('Dice settled with target faces:', targetFaces);
-    isRollingRef.current = false;
-    setIsRolling(false);
-    // Use the pre-generated target faces as the result
-    if (targetFaces) {
-      setDiceResult(targetFaces);
+    console.log('Dice animation settled with target faces:', targetFaces);
+    // When connected, wait for blockchain result (RollSettled event)
+    // When not connected (demo mode), use the local random result
+    if (!isConnected) {
+      isRollingRef.current = false;
+      setIsRolling(false);
+      if (targetFaces) {
+        setDiceResult(targetFaces);
+      }
     }
-  }, [targetFaces]);
+    // If connected, keep rolling animation going until blockchain settles
+    // The RollSettled event handler will set the final result
+  }, [targetFaces, isConnected]);
 
   // Cooldown timer
   useEffect(() => {
@@ -276,7 +318,8 @@ export default function Home() {
       }
     }
 
-    // Generate target faces first (for animation - will be replaced by blockchain result)
+    // Generate placeholder target faces for animation
+    // These will be replaced by actual blockchain result when RollSettled event arrives
     const die1 = Math.floor(Math.random() * 6) + 1;
     const die2 = Math.floor(Math.random() * 6) + 1;
 
@@ -285,7 +328,10 @@ export default function Home() {
     setTargetFaces({ die1, die2 });
     setIsRolling(true);
     setDiceResult(null);
-    startCooldown(); // Start 10s cooldown now
+    if (isConnected) {
+      setAwaitingBlockchainResult(true);
+    }
+    startCooldown();
   }, [canRoll, isRolling, isContractRolling, isRollingWithSessionKey, startCooldown, isConnected, balance, betAmount, contractRoll, hasSessionKey, isSessionKeyAuthorized, rollWithSessionKey]);
 
   return (
@@ -434,10 +480,23 @@ export default function Home() {
         {/* Simple roll button and result (when connected) */}
         {hasStarted && isConnected && (
           <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex flex-col items-center gap-3 safe-bottom pb-2">
-            {/* Result display */}
-            {diceResult && !isRolling && (
+            {/* Waiting for blockchain result */}
+            {awaitingBlockchainResult && (
               <div className={`rounded-xl px-6 py-3 text-center shadow-lg min-w-[120px] ${
-                (diceResult.die1 + diceResult.die2 === 7 || diceResult.die1 + diceResult.die2 === 11)
+                darkMode ? 'bg-blue-700' : 'bg-blue-500'
+              }`}>
+                <div className="text-lg font-bold text-white animate-pulse">
+                  Rolling...
+                </div>
+                <div className="text-xs text-white/80 mt-1">
+                  Waiting for result
+                </div>
+              </div>
+            )}
+            {/* Result display - uses blockchain won property */}
+            {diceResult && !isRolling && !awaitingBlockchainResult && (
+              <div className={`rounded-xl px-6 py-3 text-center shadow-lg min-w-[120px] ${
+                diceResult.won
                   ? darkMode ? 'bg-green-700' : 'bg-green-500'
                   : darkMode ? 'bg-red-700' : 'bg-red-500'
               }`}>
@@ -445,17 +504,15 @@ export default function Home() {
                   {diceResult.die1 + diceResult.die2}
                 </div>
                 <div className="text-sm font-bold text-white mt-1">
-                  {(diceResult.die1 + diceResult.die2 === 7 || diceResult.die1 + diceResult.die2 === 11)
-                    ? 'WIN!'
-                    : 'Try Again'}
+                  {diceResult.won ? 'WIN!' : 'Try Again'}
                 </div>
               </div>
             )}
             {/* Roll button */}
-            {canRoll ? (
+            {canRoll && !awaitingBlockchainResult ? (
               <button
                 onClick={handleThrowAgain}
-                disabled={isRolling}
+                disabled={isRolling || awaitingBlockchainResult}
                 className={`font-medium px-6 py-3 rounded-xl transition-colors shadow-lg disabled:opacity-50 ${
                   darkMode
                     ? 'bg-gray-500 hover:bg-gray-400 text-white'
@@ -464,13 +521,13 @@ export default function Home() {
               >
                 {shakeEnabled ? 'Shake or Tap to Roll' : 'Tap to Roll'}
               </button>
-            ) : (
+            ) : !awaitingBlockchainResult ? (
               <div className={`font-medium px-5 py-2.5 rounded-xl text-sm shadow-lg ${
                 darkMode ? 'bg-gray-500 text-white' : 'bg-gray-600 text-white'
               }`}>
                 Wait {Math.ceil(cooldownRemaining / 1000)}s...
               </div>
-            )}
+            ) : null}
           </div>
         )}
 
