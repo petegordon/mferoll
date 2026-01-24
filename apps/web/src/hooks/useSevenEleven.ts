@@ -540,7 +540,7 @@ export function useSevenEleven(
         args: [contractAddress, amount],
       });
       await waitForTransactionReceipt(config, { hash });
-      refetchAllowance();
+      await refetchAllowance();
     },
     [writeApproveAsync, token.address, contractAddress, config, refetchAllowance]
   );
@@ -554,8 +554,7 @@ export function useSevenEleven(
         args: [token.address, amount],
       });
       await waitForTransactionReceipt(config, { hash });
-      refetchBalance();
-      refetchAllowance();
+      await Promise.all([refetchBalance(), refetchAllowance()]);
     },
     [writeDepositAsync, token.address, contractAddress, config, refetchBalance, refetchAllowance]
   );
@@ -581,7 +580,7 @@ export function useSevenEleven(
       args: [],
     });
     await waitForTransactionReceipt(config, { hash });
-    refetchBalance();
+    await refetchBalance();
   }, [writeWithdrawAllAsync, contractAddress, config, refetchBalance]);
 
   const roll = useCallback(async () => {
@@ -614,7 +613,7 @@ export function useSevenEleven(
         args: [roller],
       });
       await waitForTransactionReceipt(config, { hash });
-      refetchAuthorizedRoller();
+      await refetchAuthorizedRoller();
     },
     [writeAuthorizeRollerAsync, contractAddress, config, refetchAuthorizedRoller]
   );

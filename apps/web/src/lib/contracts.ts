@@ -539,7 +539,7 @@ export const TOKEN_ADDRESSES = TOKEN_ADDRESSES_BY_CHAIN[CHAIN_ID.BASE_MAINNET];
 // SevenEleven contract addresses by network
 export const SEVEN_ELEVEN_ADDRESS_BY_CHAIN = {
   [CHAIN_ID.BASE_MAINNET]: '0x0000000000000000000000000000000000000000' as `0x${string}`, // TODO: Deploy to mainnet
-  [CHAIN_ID.BASE_SEPOLIA]: '0xE64395bdea50A437831d7d5b0e95901f999A4EfA' as `0x${string}`, // Deployed by script
+  [CHAIN_ID.BASE_SEPOLIA]: '0xc13078980fE702E1fb02A747096d5b395F9376C4' as `0x${string}`, // Deployed by script
 } as const;
 
 // Helper to get contract address for current chain
