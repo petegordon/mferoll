@@ -61,7 +61,7 @@ function createPipTexture(pips: number, darkMode: boolean = false): THREE.Canvas
   return texture;
 }
 
-export function D6({ position, targetFace = 1, onSettled, isRolling, darkMode = false }: D6Props) {
+export function D6({ position, targetFace, onSettled, isRolling, darkMode = false }: D6Props) {
   const meshRef = useRef<THREE.Mesh>(null);
   const [isAnimating, setIsAnimating] = useState(false);
   const isAnimatingRef = useRef(false); // Synchronous guard
@@ -69,6 +69,10 @@ export function D6({ position, targetFace = 1, onSettled, isRolling, darkMode = 
   const hasSettledRef = useRef(false);
   const startQuatRef = useRef(new THREE.Quaternion());
   const targetQuatRef = useRef(new THREE.Quaternion());
+
+  // Track if we've received a target face to transition from shake to throw
+  const hasTargetRef = useRef(false);
+  const throwPhaseStartTimeRef = useRef(0);
 
   // Create materials for each face - shiny glassy
   // BoxGeometry face order: +X, -X, +Y, -Y, +Z, -Z (indices 0-5)
@@ -138,12 +142,14 @@ export function D6({ position, targetFace = 1, onSettled, isRolling, darkMode = 
   useEffect(() => {
     // Use ref for synchronous guard to prevent double-firing
     if (isRolling && !isAnimatingRef.current) {
-      console.log('D6: Starting animation for face', targetFace);
+      console.log('D6: Starting shake animation, awaiting target face');
       isAnimatingRef.current = true; // Set immediately (sync)
       setIsAnimating(true);
       hasSettledRef.current = false;
       hasStartedThrowRef.current = false;
       hasStartedSettlingRef.current = false;
+      hasTargetRef.current = false;
+      throwPhaseStartTimeRef.current = 0;
       animationTimeRef.current = 0;
 
       // Random spin speeds (different for each axis, like real dice)
@@ -153,23 +159,38 @@ export function D6({ position, targetFace = 1, onSettled, isRolling, darkMode = 
         z: (Math.random() - 0.5) * 25,
       };
 
-      targetQuatRef.current = getTargetQuaternion(targetFace);
+      // Only set target if we already have one
+      if (targetFace !== undefined) {
+        hasTargetRef.current = true;
+        targetQuatRef.current = getTargetQuaternion(targetFace);
+      }
     }
-  }, [isRolling, targetFace]);
+  }, [isRolling]);
+
+  // Watch for targetFace prop changes - inject result mid-animation
+  useEffect(() => {
+    if (isAnimating && targetFace !== undefined && !hasTargetRef.current) {
+      console.log('D6: Target face received mid-animation:', targetFace);
+      hasTargetRef.current = true;
+      targetQuatRef.current = getTargetQuaternion(targetFace);
+      // Record when we got the target so throw phase starts from now
+      throwPhaseStartTimeRef.current = animationTimeRef.current;
+    }
+  }, [targetFace, isAnimating]);
 
   // Animate the dice
   useFrame((_, delta) => {
     if (!meshRef.current || !isAnimating) return;
 
     animationTimeRef.current += delta;
-    const shakePhase = 1.2; // Time spent "shaking in hand"
-    const throwPhase = 2.3; // Time for throw and land
-    const settlePhase = 0.3; // Final settling animation
+    const throwDuration = 2.3; // Time for throw and land
+    const settleDuration = 0.3; // Final settling animation
 
     const time = animationTimeRef.current;
 
-    if (time < shakePhase) {
-      // PHASE 1: Shaking in hand - fast chaotic rotation
+    // If we don't have a target yet, keep shaking indefinitely
+    if (!hasTargetRef.current) {
+      // PHASE 1: Shaking in hand - fast chaotic rotation (continues until target arrives)
       hasStartedThrowRef.current = false;
 
       // Rapid tumbling rotation
@@ -182,11 +203,15 @@ export function D6({ position, targetFace = 1, onSettled, isRolling, darkMode = 
       meshRef.current.position.x = position[0] + Math.sin(time * 30) * shakeIntensity * (0.5 + Math.random() * 0.5);
       meshRef.current.position.y = position[1] + 0.5 + Math.sin(time * 25) * 0.3;
       meshRef.current.position.z = position[2] + Math.cos(time * 28) * shakeIntensity * (0.5 + Math.random() * 0.5);
+      return;
+    }
 
-    } else if (time < shakePhase + throwPhase) {
+    // Calculate time since we got the target (throw phase start)
+    const timeSinceTarget = time - throwPhaseStartTimeRef.current;
+
+    if (timeSinceTarget < throwDuration) {
       // PHASE 2: Thrown - arc through air then land
-      const throwTime = time - shakePhase;
-      const throwProgress = Math.min(throwTime / throwPhase, 1);
+      const throwProgress = Math.min(timeSinceTarget / throwDuration, 1);
 
       // Capture starting rotation at beginning of throw phase
       if (!hasStartedThrowRef.current) {
@@ -269,8 +294,8 @@ export function D6({ position, targetFace = 1, onSettled, isRolling, darkMode = 
 
     } else {
       // PHASE 3: Final settling - smooth 300ms transition to exact final position
-      const settleTime = time - shakePhase - throwPhase;
-      const settleProgress = Math.min(settleTime / settlePhase, 1);
+      const settleTime = timeSinceTarget - throwDuration;
+      const settleProgress = Math.min(settleTime / settleDuration, 1);
 
       // Capture starting position/rotation at beginning of settle phase
       if (!hasStartedSettlingRef.current) {

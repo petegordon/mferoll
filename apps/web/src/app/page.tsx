@@ -167,9 +167,9 @@ export default function Home() {
 
             debugLog.info(`Result: ${die1}+${die2}=${die1 + die2} ${won ? 'WIN!' : 'LOSS'}`);
 
-            // Set target faces and trigger new animation with correct values
+            // Inject target faces into ongoing animation - D6 will transition from shake to throw
+            // No need to increment rollCount - the animation is continuous
             setTargetFaces({ die1, die2 });
-            setRollCount(c => c + 1); // Trigger new dice animation
             setDiceResult({ die1, die2, won });
             setAwaitingBlockchainResult(false);
             // Keep isRolling true - let animation settle naturally
@@ -318,15 +318,13 @@ export default function Home() {
 
   const handleDiceSettled = useCallback(() => {
     console.log('Dice animation settled with target faces:', targetFaces);
+    isRollingRef.current = false;
+    setIsRolling(false);
     // When not connected (demo mode), use the local random result
-    if (!isConnected) {
-      isRollingRef.current = false;
-      setIsRolling(false);
-      if (targetFaces) {
-        setDiceResult(targetFaces);
-      }
+    if (!isConnected && targetFaces) {
+      setDiceResult(targetFaces);
     }
-    // If connected, the VRF polling handles setting the result
+    // If connected, diceResult is already set by VRF polling
   }, [targetFaces, isConnected]);
 
   // Cooldown timer
