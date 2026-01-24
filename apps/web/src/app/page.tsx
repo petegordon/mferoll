@@ -351,28 +351,53 @@ export default function Home() {
       {!hasStarted && needsPermission === true && <TouchToStart onStart={handleStart} />}
 
       {/* Minimal header */}
-      <header className="flex-shrink-0 flex items-center gap-2 px-4 pb-3 safe-top relative z-20">
-        <ConnectButton.Custom>
-          {({ account, chain, openConnectModal, openAccountModal, mounted }) => {
-            const connected = mounted && account && chain;
-            return (
-              <button
-                onClick={connected ? openAccountModal : openConnectModal}
-                className={`text-sm font-medium px-4 py-2 rounded-lg transition-colors shadow-lg ${
-                  darkMode
-                    ? 'bg-gray-500 hover:bg-gray-400 text-white'
-                    : 'bg-gray-600 hover:bg-gray-500 text-white'
-                }`}
-              >
-                {connected ? (
-                  <span>{account.displayName}</span>
-                ) : (
-                  <span>Connect</span>
-                )}
-              </button>
-            );
-          }}
-        </ConnectButton.Custom>
+      <header className="flex-shrink-0 flex items-center justify-between px-4 pb-3 safe-top relative z-20">
+        {/* Left side: Connect + Game Balance */}
+        <div className="flex items-center gap-2">
+          <ConnectButton.Custom>
+            {({ account, chain, openConnectModal, openAccountModal, mounted }) => {
+              const connected = mounted && account && chain;
+              return (
+                <button
+                  onClick={connected ? openAccountModal : openConnectModal}
+                  className={`text-sm font-medium px-4 py-2 rounded-lg transition-colors shadow-lg ${
+                    darkMode
+                      ? 'bg-gray-500 hover:bg-gray-400 text-white'
+                      : 'bg-gray-600 hover:bg-gray-500 text-white'
+                  }`}
+                >
+                  {connected ? (
+                    <span>{account.displayName}</span>
+                  ) : (
+                    <span>Connect</span>
+                  )}
+                </button>
+              );
+            }}
+          </ConnectButton.Custom>
+          {/* Game Balance button - only show when connected */}
+          {isConnected && (
+            <button
+              onClick={() => setMenuOpen(!menuOpen)}
+              className={`px-3 py-2 rounded-lg transition-colors shadow-lg font-medium text-sm flex items-center gap-1.5 ${
+                (() => {
+                  const color = getBalanceColor();
+                  if (color === 'critical') return `${darkMode ? 'bg-red-600 text-white' : 'bg-red-500 text-white'} animate-pulse`;
+                  if (color === 'green') return darkMode ? 'bg-green-600 hover:bg-green-500 text-white' : 'bg-green-500 hover:bg-green-400 text-white';
+                  if (color === 'gray') return darkMode ? 'bg-gray-500 hover:bg-gray-400 text-white' : 'bg-gray-400 hover:bg-gray-300 text-white';
+                  if (color === 'yellow') return darkMode ? 'bg-yellow-600 hover:bg-yellow-500 text-white' : 'bg-yellow-500 hover:bg-yellow-400 text-white';
+                  if (color === 'red') return darkMode ? 'bg-red-600 hover:bg-red-500 text-white' : 'bg-red-500 hover:bg-red-400 text-white';
+                  return darkMode ? 'bg-gray-500 hover:bg-gray-400 text-white' : 'bg-gray-400 hover:bg-gray-300 text-white';
+                })()
+              }`}
+              aria-label="Open game menu"
+            >
+              <span>{Number(balanceFormatted).toFixed(2)}</span>
+              <img src={currentToken.icon} alt={currentToken.symbol} className="w-4 h-4 rounded-full" />
+            </button>
+          )}
+        </div>
+        {/* Right side: Dark/Light toggle */}
         <button
           onClick={() => setDarkMode(!darkMode)}
           className={`p-2 rounded-lg transition-colors shadow-lg ${
@@ -400,27 +425,6 @@ export default function Home() {
             </svg>
           )}
         </button>
-        {/* Game Balance button - only show when connected */}
-        {isConnected && (
-          <button
-            onClick={() => setMenuOpen(!menuOpen)}
-            className={`px-3 py-2 rounded-lg transition-colors shadow-lg font-medium text-sm flex items-center gap-1.5 ${
-              (() => {
-                const color = getBalanceColor();
-                if (color === 'critical') return `${darkMode ? 'bg-red-600 text-white' : 'bg-red-500 text-white'} animate-pulse`;
-                if (color === 'green') return darkMode ? 'bg-green-600 hover:bg-green-500 text-white' : 'bg-green-500 hover:bg-green-400 text-white';
-                if (color === 'gray') return darkMode ? 'bg-gray-500 hover:bg-gray-400 text-white' : 'bg-gray-400 hover:bg-gray-300 text-white';
-                if (color === 'yellow') return darkMode ? 'bg-yellow-600 hover:bg-yellow-500 text-white' : 'bg-yellow-500 hover:bg-yellow-400 text-white';
-                if (color === 'red') return darkMode ? 'bg-red-600 hover:bg-red-500 text-white' : 'bg-red-500 hover:bg-red-400 text-white';
-                return darkMode ? 'bg-gray-500 hover:bg-gray-400 text-white' : 'bg-gray-400 hover:bg-gray-300 text-white';
-              })()
-            }`}
-            aria-label="Open game menu"
-          >
-            <span>{Number(balanceFormatted).toFixed(2)}</span>
-            <img src={currentToken.icon} alt={currentToken.symbol} className="w-4 h-4 rounded-full" />
-          </button>
-        )}
       </header>
 
       {/* Full screen dice view */}
