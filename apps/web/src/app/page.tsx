@@ -23,7 +23,6 @@ const DiceScene = dynamic(() => import('@/components/dice/DiceScene'), {
   ),
 });
 
-const ROLL_COOLDOWN_MS = 8000; // 8 second cooldown between rolls
 
 // Check if iOS requires motion permission (iOS 13+)
 function needsMotionPermission(): boolean {
@@ -42,14 +41,11 @@ export default function Home() {
   const [targetFaces, setTargetFaces] = useState<{ die1: number; die2: number } | null>(null);
   const [hasStarted, setHasStarted] = useState(false);
   const [needsPermission, setNeedsPermission] = useState<boolean | null>(null); // null = checking
-  const [canRoll, setCanRoll] = useState(true);
   const [shakeEnabled, setShakeEnabled] = useState(false);
   const [rollCount, setRollCount] = useState(0);
-  const [cooldownRemaining, setCooldownRemaining] = useState(0);
   const [awaitingBlockchainResult, setAwaitingBlockchainResult] = useState(false);
   const [waitingTooLong, setWaitingTooLong] = useState(false);
   const isRollingRef = useRef(false);
-  const cooldownEndRef = useRef(0);
 
   // Get contract address and public client for event polling
   const contractAddress = getSevenElevenAddress(chainId);
@@ -222,13 +218,6 @@ export default function Home() {
     }
   }, [hasValidSessionKey, isSessionKeyAuthorized, sessionKeyAddress, authorizedRoller]);
 
-  // Start cooldown timer (called when roll starts)
-  const startCooldown = useCallback(() => {
-    cooldownEndRef.current = Date.now() + ROLL_COOLDOWN_MS;
-    setCooldownRemaining(ROLL_COOLDOWN_MS);
-    setCanRoll(false);
-  }, []);
-
   // Check on mount if we need to show TouchToStart (iOS only)
   useEffect(() => {
     const needs = needsMotionPermission();
@@ -252,9 +241,9 @@ export default function Home() {
     // Don't auto-roll - wait for user to tap/shake
   }, []);
 
-  // Handle roll - only when canRoll is true
+  // Handle roll
   const handleRoll = useCallback(async () => {
-    if (!canRoll || isRollingRef.current || isRolling || isContractRolling || isRollingWithSessionKey) {
+    if (isRollingRef.current || isRolling || isContractRolling || isRollingWithSessionKey) {
       return;
     }
 
@@ -313,8 +302,7 @@ export default function Home() {
       setIsRolling(true);
       setDiceResult(null);
     }
-    startCooldown();
-  }, [canRoll, isRolling, isContractRolling, isRollingWithSessionKey, startCooldown, isConnected, balance, betAmount, contractRoll, hasSessionKey, isSessionKeyAuthorized, rollWithSessionKey]);
+  }, [isRolling, isContractRolling, isRollingWithSessionKey, isConnected, balance, betAmount, contractRoll, hasSessionKey, isSessionKeyAuthorized, rollWithSessionKey]);
 
   const handleDiceSettled = useCallback(() => {
     console.log('Dice animation settled with target faces:', targetFaces);
@@ -327,27 +315,12 @@ export default function Home() {
     // If connected, diceResult is already set by VRF polling
   }, [targetFaces, isConnected]);
 
-  // Cooldown timer
-  useEffect(() => {
-    if (cooldownRemaining <= 0) return;
-
-    const interval = setInterval(() => {
-      const remaining = Math.max(0, cooldownEndRef.current - Date.now());
-      setCooldownRemaining(remaining);
-      if (remaining <= 0) {
-        setCanRoll(true);
-      }
-    }, 100);
-
-    return () => clearInterval(interval);
-  }, [cooldownRemaining]);
-
-  // Listen for shake - only when canRoll is true
-  useShakeListener(shakeEnabled && hasStarted && canRoll, handleRoll, isRolling);
+  // Listen for shake
+  useShakeListener(shakeEnabled && hasStarted && !isRolling, handleRoll, isRolling);
 
   // Handler for "Throw Again" button - directly starts roll
   const handleThrowAgain = useCallback(async () => {
-    if (!canRoll || isRollingRef.current || isRolling || isContractRolling || isRollingWithSessionKey) {
+    if (isRollingRef.current || isRolling || isContractRolling || isRollingWithSessionKey) {
       return;
     }
 
@@ -406,8 +379,7 @@ export default function Home() {
       setIsRolling(true);
       setDiceResult(null);
     }
-    startCooldown();
-  }, [canRoll, isRolling, isContractRolling, isRollingWithSessionKey, startCooldown, isConnected, balance, betAmount, contractRoll, hasSessionKey, isSessionKeyAuthorized, rollWithSessionKey]);
+  }, [isRolling, isContractRolling, isRollingWithSessionKey, isConnected, balance, betAmount, contractRoll, hasSessionKey, isSessionKeyAuthorized, rollWithSessionKey]);
 
   return (
     <main className="h-[100dvh] flex flex-col overflow-hidden relative">
@@ -536,24 +508,16 @@ export default function Home() {
                 {diceResult.die1 + diceResult.die2}
               </div>
             </div>
-            {canRoll ? (
-              <button
-                onClick={handleThrowAgain}
-                className={`font-medium px-5 py-2.5 rounded-xl transition-colors text-sm shadow-lg ${
-                  darkMode
-                    ? 'bg-gray-500 hover:bg-gray-400 text-white'
-                    : 'bg-gray-600 hover:bg-gray-500 text-white'
-                }`}
-              >
-                {shakeEnabled ? 'Shake or Tap to Roll' : 'Tap to Roll'}
-              </button>
-            ) : (
-              <div className={`font-medium px-5 py-2.5 rounded-xl text-sm shadow-lg ${
-                darkMode ? 'bg-gray-500 text-white' : 'bg-gray-600 text-white'
-              }`}>
-                Wait {Math.ceil(cooldownRemaining / 1000)}s...
-              </div>
-            )}
+            <button
+              onClick={handleThrowAgain}
+              className={`font-medium px-5 py-2.5 rounded-xl transition-colors text-sm shadow-lg ${
+                darkMode
+                  ? 'bg-gray-500 hover:bg-gray-400 text-white'
+                  : 'bg-gray-600 hover:bg-gray-500 text-white'
+              }`}
+            >
+              {shakeEnabled ? 'Shake or Tap to Roll' : 'Tap to Roll'}
+            </button>
           </div>
         )}
 
@@ -601,7 +565,7 @@ export default function Home() {
               </div>
             )}
             {/* Roll button */}
-            {canRoll && !awaitingBlockchainResult ? (
+            {!awaitingBlockchainResult && (
               <button
                 onClick={handleThrowAgain}
                 disabled={isRolling || awaitingBlockchainResult}
@@ -613,13 +577,7 @@ export default function Home() {
               >
                 {shakeEnabled ? 'Shake or Tap to Roll' : 'Tap to Roll'}
               </button>
-            ) : !awaitingBlockchainResult ? (
-              <div className={`font-medium px-5 py-2.5 rounded-xl text-sm shadow-lg ${
-                darkMode ? 'bg-gray-500 text-white' : 'bg-gray-600 text-white'
-              }`}>
-                Wait {Math.ceil(cooldownRemaining / 1000)}s...
-              </div>
-            ) : null}
+            )}
           </div>
         )}
 
