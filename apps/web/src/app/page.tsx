@@ -46,6 +46,7 @@ export default function Home() {
   const [rollCount, setRollCount] = useState(0);
   const [cooldownRemaining, setCooldownRemaining] = useState(0);
   const [awaitingBlockchainResult, setAwaitingBlockchainResult] = useState(false);
+  const [waitingTooLong, setWaitingTooLong] = useState(false);
   const isRollingRef = useRef(false);
   const cooldownEndRef = useRef(0);
 
@@ -125,26 +126,71 @@ export default function Home() {
     abi: SEVEN_ELEVEN_ABI,
     eventName: 'RollSettled',
     onLogs(logs) {
+      debugLog.debug(`RollSettled events received: ${logs.length}`);
       for (const log of logs) {
-        const args = (log as unknown as { args: { player: string; die1: number; die2: number; won: boolean } }).args;
-        // Only process events for this player
-        if (args.player.toLowerCase() === address?.toLowerCase()) {
-          const die1 = Number(args.die1);
-          const die2 = Number(args.die2);
-          const won = args.won;
+        try {
+          // Type the log properly for wagmi v2
+          const typedLog = log as unknown as {
+            args: {
+              sequenceNumber: bigint;
+              player: `0x${string}`;
+              die1: number;
+              die2: number;
+              won: boolean;
+              payout: bigint;
+            };
+          };
+          const args = typedLog.args;
 
-          debugLog.info(`Blockchain result: ${die1} + ${die2} = ${die1 + die2} (${won ? 'WIN' : 'LOSS'})`);
+          debugLog.debug(`Event player: ${args.player}, our address: ${address}`);
 
-          // Update target faces with actual blockchain result
-          setTargetFaces({ die1, die2 });
-          setDiceResult({ die1, die2, won });
-          setAwaitingBlockchainResult(false);
-          isRollingRef.current = false;
-          setIsRolling(false);
+          // Only process events for this player
+          if (args.player?.toLowerCase() === address?.toLowerCase()) {
+            const die1 = Number(args.die1);
+            const die2 = Number(args.die2);
+            const won = args.won;
+
+            debugLog.info(`Blockchain result: ${die1} + ${die2} = ${die1 + die2} (${won ? 'WIN' : 'LOSS'})`);
+
+            // Update target faces with actual blockchain result
+            setTargetFaces({ die1, die2 });
+            setDiceResult({ die1, die2, won });
+            setAwaitingBlockchainResult(false);
+            isRollingRef.current = false;
+            setIsRolling(false);
+          }
+        } catch (err) {
+          debugLog.error(`Error parsing RollSettled event: ${err}`);
         }
       }
     },
   });
+
+  // Timeout fallback: if awaiting result for too long, show dismiss option
+  useEffect(() => {
+    if (!awaitingBlockchainResult) {
+      setWaitingTooLong(false);
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      if (awaitingBlockchainResult) {
+        debugLog.warn('Blockchain result timeout - VRF may be delayed');
+        setWaitingTooLong(true);
+      }
+    }, 15000); // 15 seconds before showing dismiss option
+
+    return () => clearTimeout(timeout);
+  }, [awaitingBlockchainResult]);
+
+  // Function to dismiss waiting state
+  const handleDismissWaiting = useCallback(() => {
+    setAwaitingBlockchainResult(false);
+    setWaitingTooLong(false);
+    isRollingRef.current = false;
+    setIsRolling(false);
+    debugLog.info('User dismissed waiting state');
+  }, []);
 
   // Log session key state changes (not every render)
   useEffect(() => {
@@ -489,15 +535,27 @@ export default function Home() {
           <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex flex-col items-center gap-3 safe-bottom pb-2">
             {/* Waiting for blockchain result */}
             {awaitingBlockchainResult && (
-              <div className={`rounded-xl px-6 py-3 text-center shadow-lg min-w-[120px] ${
-                darkMode ? 'bg-blue-700' : 'bg-blue-500'
-              }`}>
-                <div className="text-lg font-bold text-white animate-pulse">
-                  Rolling...
+              <div className="flex flex-col items-center gap-2">
+                <div className={`rounded-xl px-6 py-3 text-center shadow-lg min-w-[120px] ${
+                  darkMode ? 'bg-blue-700' : 'bg-blue-500'
+                }`}>
+                  <div className="text-lg font-bold text-white animate-pulse">
+                    Rolling...
+                  </div>
+                  <div className="text-xs text-white/80 mt-1">
+                    {waitingTooLong ? 'VRF callback delayed' : 'Waiting for result'}
+                  </div>
                 </div>
-                <div className="text-xs text-white/80 mt-1">
-                  Waiting for result
-                </div>
+                {waitingTooLong && (
+                  <button
+                    onClick={handleDismissWaiting}
+                    className={`text-sm px-4 py-2 rounded-lg ${
+                      darkMode ? 'bg-gray-600 hover:bg-gray-500 text-white' : 'bg-gray-500 hover:bg-gray-400 text-white'
+                    }`}
+                  >
+                    Dismiss
+                  </button>
+                )}
               </div>
             )}
             {/* Result display - uses blockchain won property */}
