@@ -94,27 +94,54 @@ export function SevenElevenGame({
 
   const isZeroDevEnabled = isZeroDevConfigured();
 
-  // Handle deposit
+  // Deposit validation error
+  const [depositError, setDepositError] = useState<string | null>(null);
+
+  // Deposit flow step tracking
+  type DepositStep = 'idle' | 'approving' | 'depositing' | 'authorizing' | 'done';
+  const [depositStep, setDepositStep] = useState<DepositStep>('idle');
+
+  // Handle deposit - chains approve → deposit → authorize in one flow
   const handleDeposit = useCallback(async () => {
+    setDepositError(null);
     const amount = parseTokenAmount(depositAmount, currentToken.decimals);
     if (amount <= BigInt(0)) return;
 
-    // Check if approval needed
-    if (needsApproval || (allowance !== undefined && allowance < amount)) {
-      await approve(amount);
-    } else {
+    // Validate minimum deposit before submitting
+    const minDepositAmount = parseTokenAmount(minDepositFormatted, currentToken.decimals);
+    if (amount < minDepositAmount) {
+      setDepositError(`Minimum deposit is $2.00 (${Number(minDepositFormatted).toFixed(2)} ${currentToken.symbol})`);
+      return;
+    }
+
+    try {
+      // Step 1: Approve if needed
+      if (needsApproval || (allowance !== undefined && allowance < amount)) {
+        setDepositStep('approving');
+        await approve(amount);
+      }
+
+      // Step 2: Deposit
+      setDepositStep('depositing');
       await deposit(amount);
+
+      // Step 3: Authorize session key (if ZeroDev enabled and key exists but not authorized)
+      if (isZeroDevEnabled && sessionKeyAddress && !isSessionKeyAuthorized) {
+        setDepositStep('authorizing');
+        await authorizeRoller(sessionKeyAddress);
+      }
+
+      // Success - close modal
+      setDepositStep('done');
       setDepositAmount('');
       setShowDepositModal(false);
-
-      // After successful deposit, offer to create session key if ZeroDev is enabled
-      // Note: Session keys require the user to use a smart wallet for the player address
-      // This is a known limitation - full implementation requires smart wallet integration
-      if (isZeroDevEnabled && !hasValidSessionKey) {
-        console.log('ZeroDev enabled - session key creation available after deposit');
-      }
+    } catch (err) {
+      console.error('Deposit flow failed:', err);
+      // Error is already captured by the hook's error state
+    } finally {
+      setDepositStep('idle');
     }
-  }, [depositAmount, currentToken.decimals, needsApproval, allowance, approve, deposit, isZeroDevEnabled, hasValidSessionKey]);
+  }, [depositAmount, currentToken.decimals, minDepositFormatted, currentToken.symbol, needsApproval, allowance, approve, deposit, isZeroDevEnabled, sessionKeyAddress, isSessionKeyAuthorized, authorizeRoller]);
 
   // Handle session key creation and authorization
   // 1. Create a ZeroDev session key (local, no wallet prompt)
@@ -401,7 +428,10 @@ export function SevenElevenGame({
                 <input
                   type="text"
                   value={depositAmount}
-                  onChange={(e) => setDepositAmount(e.target.value)}
+                  onChange={(e) => {
+                    setDepositAmount(e.target.value);
+                    setDepositError(null);
+                  }}
                   placeholder={`Min: ${Number(minDepositFormatted).toFixed(2)}`}
                   className={`flex-1 px-3 py-2 rounded-lg border ${
                     darkMode
@@ -435,8 +465,12 @@ export function SevenElevenGame({
 
             <div className="flex gap-3">
               <button
-                onClick={() => setShowDepositModal(false)}
-                className={`flex-1 py-2 px-4 rounded-lg font-medium ${
+                onClick={() => {
+                  setShowDepositModal(false);
+                  setDepositError(null);
+                }}
+                disabled={depositStep !== 'idle'}
+                className={`flex-1 py-2 px-4 rounded-lg font-medium disabled:opacity-50 ${
                   darkMode
                     ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -446,26 +480,26 @@ export function SevenElevenGame({
               </button>
               <button
                 onClick={handleDeposit}
-                disabled={isApproving || isDepositing || !depositAmount}
+                disabled={depositStep !== 'idle' || !depositAmount}
                 className={`flex-1 py-2 px-4 rounded-lg font-medium disabled:opacity-50 ${
                   darkMode
                     ? 'bg-green-600 text-white hover:bg-green-500'
                     : 'bg-green-500 text-white hover:bg-green-400'
                 }`}
               >
-                {isApproving
+                {depositStep === 'approving'
                   ? 'Approving...'
-                  : isDepositing
+                  : depositStep === 'depositing'
                   ? 'Depositing...'
-                  : needsApproval
-                  ? 'Approve'
+                  : depositStep === 'authorizing'
+                  ? 'Authorizing...'
                   : 'Deposit'}
               </button>
             </div>
 
-            {error && (
+            {(error || depositError) && (
               <div className="mt-3 text-red-500 text-sm text-center">
-                {error.message}
+                {depositError || error?.message}
               </div>
             )}
           </div>

@@ -8,7 +8,9 @@ import {
   useWriteContract,
   useWaitForTransactionReceipt,
   useWatchContractEvent,
+  useConfig,
 } from 'wagmi';
+import { waitForTransactionReceipt } from '@wagmi/core';
 import { parseUnits, formatUnits, encodeFunctionData } from 'viem';
 import {
   SEVEN_ELEVEN_ABI,
@@ -195,6 +197,7 @@ export function useSevenEleven(
 ): UseSevenElevenReturn {
   const { address: eoaAddress, isConnected } = useAccount();
   const chainId = useChainId();
+  const config = useConfig();
 
   // Use provided player address or fall back to EOA
   const address = options.playerAddress || eoaAddress;
@@ -328,6 +331,7 @@ export function useSevenEleven(
   // Write contracts
   const {
     writeContract: writeApprove,
+    writeContractAsync: writeApproveAsync,
     data: approveHash,
     isPending: isApprovePending,
     error: approveError,
@@ -335,6 +339,7 @@ export function useSevenEleven(
 
   const {
     writeContract: writeDeposit,
+    writeContractAsync: writeDepositAsync,
     data: depositHash,
     isPending: isDepositPending,
     error: depositError,
@@ -363,6 +368,7 @@ export function useSevenEleven(
 
   const {
     writeContract: writeAuthorizeRoller,
+    writeContractAsync: writeAuthorizeRollerAsync,
     data: authorizeHash,
     isPending: isAuthorizePending,
     error: authorizeError,
@@ -453,27 +459,34 @@ export function useSevenEleven(
 
   // Functions
   const approve = useCallback(
-    async (amount: bigint) => {
-      writeApprove({
+    async (amount: bigint): Promise<void> => {
+      const hash = await writeApproveAsync({
         address: token.address,
         abi: ERC20_ABI,
         functionName: 'approve',
         args: [contractAddress, amount],
       });
+      // Wait for transaction confirmation
+      await waitForTransactionReceipt(config, { hash });
+      refetchAllowance();
     },
-    [writeApprove, token.address, contractAddress]
+    [writeApproveAsync, token.address, contractAddress, config, refetchAllowance]
   );
 
   const deposit = useCallback(
-    async (amount: bigint) => {
-      writeDeposit({
+    async (amount: bigint): Promise<void> => {
+      const hash = await writeDepositAsync({
         address: contractAddress,
         abi: SEVEN_ELEVEN_ABI,
         functionName: 'deposit',
         args: [token.address, amount],
       });
+      // Wait for transaction confirmation
+      await waitForTransactionReceipt(config, { hash });
+      refetchBalance();
+      refetchAllowance();
     },
-    [writeDeposit, token.address, contractAddress]
+    [writeDepositAsync, token.address, contractAddress, config, refetchBalance, refetchAllowance]
   );
 
   const withdraw = useCallback(
@@ -513,15 +526,18 @@ export function useSevenEleven(
 
   // Authorize a roller (for existing deposits)
   const authorizeRoller = useCallback(
-    async (roller: `0x${string}`) => {
-      writeAuthorizeRoller({
+    async (roller: `0x${string}`): Promise<void> => {
+      const hash = await writeAuthorizeRollerAsync({
         address: contractAddress,
         abi: SEVEN_ELEVEN_ABI,
         functionName: 'authorizeRoller',
         args: [roller],
       });
+      // Wait for transaction confirmation
+      await waitForTransactionReceipt(config, { hash });
+      refetchAuthorizedRoller();
     },
-    [writeAuthorizeRoller, contractAddress]
+    [writeAuthorizeRollerAsync, contractAddress, config, refetchAuthorizedRoller]
   );
 
   // Revoke the current authorized roller
