@@ -3,9 +3,10 @@
 import dynamic from 'next/dynamic';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { TouchToStart } from '@/components/motion/TouchToStart';
-import { useAccount, useWatchContractEvent, useChainId } from 'wagmi';
+import { useAccount, useChainId, usePublicClient } from 'wagmi';
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { SEVEN_ELEVEN_ABI, getSevenElevenAddress } from '@/lib/contracts';
+import { parseAbiItem } from 'viem';
 import { SevenElevenGame } from '@/components/SevenElevenGame';
 import { useSevenEleven, useSupportedTokens } from '@/hooks/useSevenEleven';
 import { useSessionKey } from '@/hooks/useSessionKey';
@@ -50,8 +51,9 @@ export default function Home() {
   const isRollingRef = useRef(false);
   const cooldownEndRef = useRef(0);
 
-  // Get contract address for event watching
+  // Get contract address and public client for event polling
   const contractAddress = getSevenElevenAddress(chainId);
+  const publicClient = usePublicClient();
 
   // Blockchain integration
   const supportedTokens = useSupportedTokens();
@@ -120,61 +122,69 @@ export default function Home() {
     authorizedRoller &&
     authorizedRoller.toLowerCase() === sessionKeyAddress.toLowerCase();
 
-  // Watch for RollSettled events to get actual dice results from blockchain
-  useWatchContractEvent({
-    address: contractAddress,
-    abi: SEVEN_ELEVEN_ABI,
-    eventName: 'RollSettled',
-    poll: true, // Force polling instead of websocket
-    pollingInterval: 2_000, // Poll every 2 seconds
-    onLogs(logs) {
-      debugLog.debug(`RollSettled: ${logs.length} events`);
-      for (const log of logs) {
-        try {
-          // Log raw data for debugging
-          const rawLog = log as { args?: Record<string, unknown> };
-          debugLog.debug(`Raw args: ${JSON.stringify(rawLog.args)}`);
+  // Poll for RollSettled events when awaiting result
+  const lastCheckedBlockRef = useRef<bigint>(BigInt(0));
 
-          // Access args directly - wagmi v2 provides decoded args
-          const args = rawLog.args as {
-            sequenceNumber?: bigint;
-            player?: `0x${string}`;
-            die1?: bigint | number;
-            die2?: bigint | number;
-            won?: boolean;
-            payout?: bigint;
-          } | undefined;
+  useEffect(() => {
+    if (!awaitingBlockchainResult || !publicClient || !address) {
+      return;
+    }
 
-          if (!args) {
-            debugLog.warn('No args in event');
-            continue;
-          }
+    debugLog.debug('Starting RollSettled event polling...');
 
-          const eventPlayer = args.player?.toLowerCase();
-          const ourAddress = address?.toLowerCase();
-          debugLog.debug(`Player: ${eventPlayer}, Us: ${ourAddress}`);
+    const pollForEvents = async () => {
+      try {
+        const currentBlock = await publicClient.getBlockNumber();
+        const fromBlock = lastCheckedBlockRef.current > BigInt(0)
+          ? lastCheckedBlockRef.current
+          : currentBlock - BigInt(10);
 
-          // Only process events for this player
-          if (eventPlayer && ourAddress && eventPlayer === ourAddress) {
+        debugLog.debug(`Polling blocks ${fromBlock} to ${currentBlock}`);
+
+        const logs = await publicClient.getLogs({
+          address: contractAddress,
+          event: parseAbiItem('event RollSettled(uint64 indexed sequenceNumber, address indexed player, uint8 die1, uint8 die2, bool won, uint256 payout)'),
+          args: {
+            player: address,
+          },
+          fromBlock,
+          toBlock: currentBlock,
+        });
+
+        lastCheckedBlockRef.current = currentBlock;
+
+        if (logs.length > 0) {
+          debugLog.info(`Found ${logs.length} RollSettled events!`);
+          const latestLog = logs[logs.length - 1];
+          const args = latestLog.args;
+
+          debugLog.debug(`Raw args: ${JSON.stringify(args)}`);
+
+          if (args.die1 !== undefined && args.die2 !== undefined) {
             const die1 = Number(args.die1);
             const die2 = Number(args.die2);
             const won = Boolean(args.won);
 
             debugLog.info(`Result: ${die1}+${die2}=${die1 + die2} ${won ? 'WIN!' : 'LOSS'}`);
 
-            // Update with actual blockchain result
             setTargetFaces({ die1, die2 });
             setDiceResult({ die1, die2, won });
             setAwaitingBlockchainResult(false);
             isRollingRef.current = false;
             setIsRolling(false);
           }
-        } catch (err) {
-          debugLog.error(`Event parse error: ${err}`);
         }
+      } catch (err) {
+        debugLog.error(`Poll error: ${err}`);
       }
-    },
-  });
+    };
+
+    // Poll immediately and then every 2 seconds
+    pollForEvents();
+    const interval = setInterval(pollForEvents, 2000);
+
+    return () => clearInterval(interval);
+  }, [awaitingBlockchainResult, publicClient, address, contractAddress]);
 
   // Timeout fallback: if awaiting result for too long, show dismiss option
   useEffect(() => {
