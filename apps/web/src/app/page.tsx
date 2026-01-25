@@ -192,6 +192,7 @@ export default function Home() {
 
             const vrfTime = rollStartTimeRef.current > 0 ? Date.now() - rollStartTimeRef.current : 0;
             debugLog.info(`Result: ${die1}+${die2}=${die1 + die2} ${won ? 'WIN!' : 'LOSS'} (VRF: ${vrfTime}ms)`);
+            debugLog.debug(`playerBalance from event: ${args.playerBalance?.toString() || 'undefined'}`);
 
             // Set optimistic state for instant UI updates
             if (won && args.mferPayout !== undefined) {
