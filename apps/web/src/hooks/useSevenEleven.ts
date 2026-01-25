@@ -1062,7 +1062,7 @@ export function useSessionGrokStats(): {
   const [sessionStartSkim, setSessionStartSkim] = useState<bigint | null>(null);
   const [sessionStartCount, setSessionStartCount] = useState<number | null>(null);
 
-  // Read current player skim paid
+  // Read current player skim paid (poll every 3 seconds for updates)
   const { data: playerSkimPaid, isLoading } = useReadContract({
     address: contractAddress,
     abi: SEVEN_ELEVEN_ABI,
@@ -1070,10 +1070,11 @@ export function useSessionGrokStats(): {
     args: address ? [address] : undefined,
     query: {
       enabled: isConnected && !!address && contractAddress !== '0x0000000000000000000000000000000000000000',
+      refetchInterval: 3000,
     },
   });
 
-  // Read player stats to get loss count
+  // Read player stats to get loss count (poll every 3 seconds for updates)
   const { data: playerStatsRaw } = useReadContract({
     address: contractAddress,
     abi: SEVEN_ELEVEN_ABI,
@@ -1081,14 +1082,8 @@ export function useSessionGrokStats(): {
     args: address ? [address] : undefined,
     query: {
       enabled: isConnected && !!address && contractAddress !== '0x0000000000000000000000000000000000000000',
+      refetchInterval: 3000,
     },
-  });
-
-  // Watch for LossSkim events to update immediately
-  useWatchContractEvent({
-    address: contractAddress,
-    abi: SEVEN_ELEVEN_ABI,
-    eventName: 'LossSkim',
   });
 
   // Set session start values when player connects (only once per session)
