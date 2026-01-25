@@ -65,6 +65,7 @@ export function SevenElevenGame({
   const [depositAmount, setDepositAmount] = useState('');
   const [showStats, setShowStats] = useState(false);
   const [showWinnings, setShowWinnings] = useState(false);
+  const [copiedToken, setCopiedToken] = useState<string | null>(null);
 
   // Use first deposit token as default
   const currentToken = selectedToken && depositTokens.find(t => t.address === selectedToken.address)
@@ -177,6 +178,12 @@ export function SevenElevenGame({
       await withdrawAll();
     }
   }, [balance, withdrawAll]);
+
+  const handleCopyAddress = useCallback((address: string, symbol: string) => {
+    navigator.clipboard.writeText(address);
+    setCopiedToken(symbol);
+    setTimeout(() => setCopiedToken(null), 2000);
+  }, []);
 
   const winRate =
     playerStats && (playerStats.totalWins + playerStats.totalLosses) > BigInt(0)
@@ -447,6 +454,48 @@ export function SevenElevenGame({
               </div>
             </div>
           </div>
+
+          {/* Payouts Total */}
+          {memeWinnings && (memeWinnings.mfer > BigInt(0) || memeWinnings.bnkr > BigInt(0) || memeWinnings.drb > BigInt(0)) && (
+            <>
+              <div className={`border-t my-3 ${darkMode ? 'border-gray-600' : 'border-gray-200'}`} />
+              <div className={`text-xs mb-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                Total Payouts
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                {payoutTokens.map((token) => {
+                  const amount = token.symbol.includes('MFER') ? memeWinnings.mfer :
+                                token.symbol.includes('BNKR') ? memeWinnings.bnkr :
+                                memeWinnings.drb;
+                  return (
+                    <div
+                      key={token.symbol}
+                      className="text-center relative group cursor-pointer"
+                      onClick={() => handleCopyAddress(token.address, token.symbol)}
+                    >
+                      <div className="relative inline-block">
+                        <img src={token.icon} alt={token.symbol} className="w-6 h-6 rounded-full mx-auto mb-1" />
+                        {/* Copy overlay on hover */}
+                        <div className={`absolute inset-0 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity ${
+                          darkMode ? 'bg-gray-900/80' : 'bg-white/80'
+                        }`}>
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                          </svg>
+                        </div>
+                      </div>
+                      <div className={`text-xs font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                        {formatMemeAmount(amount)}
+                      </div>
+                      <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                        {copiedToken === token.symbol ? 'Copied!' : token.symbol}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
         </div>
       )}
 
