@@ -64,7 +64,7 @@ export function SevenElevenGame({
   const { prices: tokenPrices } = useTokenPrices();
   const [selectedToken, setSelectedToken] = useState<SupportedToken | null>(null);
   const [showDepositModal, setShowDepositModal] = useState(false);
-  const [depositAmount, setDepositAmount] = useState('');
+  const [depositAmount, setDepositAmount] = useState('4.00');
   const [showStats, setShowStats] = useState(false);
   const [showWinnings, setShowWinnings] = useState(false);
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
@@ -482,54 +482,6 @@ export function SevenElevenGame({
               </div>
             </div>
           </div>
-
-          {/* Payouts Total */}
-          {memeWinnings && (memeWinnings.mfer > BigInt(0) || memeWinnings.bnkr > BigInt(0) || memeWinnings.drb > BigInt(0)) && (
-            <>
-              <div className={`border-t my-3 ${darkMode ? 'border-gray-600' : 'border-gray-200'}`} />
-              <div className={`text-xs mb-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                Total Payouts
-              </div>
-              <div className="grid grid-cols-3 gap-2">
-                {payoutTokens.map((token) => {
-                  const amount = token.symbol.includes('MFER') ? memeWinnings.mfer :
-                                token.symbol.includes('BNKR') ? memeWinnings.bnkr :
-                                memeWinnings.drb;
-                  const priceInfo = tokenPrices[token.symbol];
-                  return (
-                    <div
-                      key={token.symbol}
-                      className="text-center relative group cursor-pointer"
-                      onClick={() => setSelectedPayoutToken(token)}
-                    >
-                      <div className="relative inline-block">
-                        <img src={token.icon} alt={token.symbol} className="w-6 h-6 rounded-full mx-auto mb-1" />
-                        {/* Info overlay on hover */}
-                        <div className={`absolute inset-0 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity ${
-                          darkMode ? 'bg-gray-900/80' : 'bg-white/80'
-                        }`}>
-                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                        </div>
-                      </div>
-                      <div className={`text-xs font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                        {formatMemeAmount(amount)}
-                      </div>
-                      <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                        {token.symbol}
-                      </div>
-                      {priceInfo && (
-                        <div className={`text-xs ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
-                          {priceInfo.priceUsd}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </>
-          )}
         </div>
       )}
 
@@ -671,44 +623,13 @@ export function SevenElevenGame({
                     setDepositAmount(e.target.value);
                     setDepositError(null);
                   }}
-                  placeholder={minAmountNeeded && minAmountNeeded > BigInt(0)
-                    ? `Need ${Number(formatUnits(minAmountNeeded, currentToken.decimals)).toFixed(2)} for $${SEVEN_ELEVEN_CONSTANTS.MIN_DEPOSIT_USD} balance`
-                    : 'Enter amount'
-                  }
+                  placeholder="4.00"
                   className={`flex-1 px-3 py-2 rounded-lg border ${
                     darkMode
                       ? 'bg-gray-700 border-gray-600 text-white'
                       : 'bg-white border-gray-300 text-gray-900'
                   }`}
                 />
-                <button
-                  onClick={() => {
-                    if (minAmountNeeded && minAmountNeeded > BigInt(0)) {
-                      setDepositAmount(formatUnits(minAmountNeeded, currentToken.decimals));
-                    }
-                  }}
-                  disabled={!minAmountNeeded || minAmountNeeded <= BigInt(0)}
-                  className={`px-3 py-2 rounded-lg text-sm disabled:opacity-50 ${
-                    darkMode
-                      ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                  }`}
-                >
-                  Min
-                </button>
-                <button
-                  onClick={() =>
-                    walletBalance &&
-                    setDepositAmount(formatUnits(walletBalance, currentToken.decimals))
-                  }
-                  className={`px-3 py-2 rounded-lg text-sm ${
-                    darkMode
-                      ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                  }`}
-                >
-                  Max
-                </button>
               </div>
               <div
                 className={`text-xs mt-1 flex flex-col gap-0.5 ${
@@ -722,11 +643,6 @@ export function SevenElevenGame({
                 <div className="flex items-center gap-1">
                   Game Balance: {formatTokenAmount(balanceFormatted)}
                   <img src={currentToken.icon} alt={currentToken.symbol} className="w-3.5 h-3.5 rounded-full" />
-                  {minAmountNeeded && minAmountNeeded > BigInt(0) && (
-                    <span className={darkMode ? 'text-yellow-400' : 'text-yellow-600'}>
-                      (need {formatTokenAmount(formatUnits(minAmountNeeded, currentToken.decimals))} more for ${SEVEN_ELEVEN_CONSTANTS.MIN_DEPOSIT_USD})
-                    </span>
-                  )}
                 </div>
               </div>
             </div>

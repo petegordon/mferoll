@@ -4,7 +4,7 @@ import dynamic from 'next/dynamic';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { TouchToStart } from '@/components/motion/TouchToStart';
 import { useAccount, useChainId, usePublicClient } from 'wagmi';
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { SEVEN_ELEVEN_ABI, getSevenElevenAddress } from '@/lib/contracts';
 import { parseAbiItem } from 'viem';
 import { SevenElevenGame } from '@/components/SevenElevenGame';
@@ -13,6 +13,8 @@ import { useSessionKey } from '@/hooks/useSessionKey';
 import { useSmartWallet } from '@/hooks/useSmartWallet';
 import { DebugConsole, debugLog } from '@/components/DebugConsole';
 import { GrokStats } from '@/components/GrokStats';
+import { useOnboarding } from '@/hooks/useOnboarding';
+import { Onboarding } from '@/components/Onboarding';
 
 // Dynamic import for Three.js components to avoid SSR issues
 const DiceScene = dynamic(() => import('@/components/dice/DiceScene'), {
@@ -90,11 +92,28 @@ export default function Home() {
     isRollingWithSessionKey,
     hasSessionKey,
     authorizedRoller,
+    playerStats,
     error: contractError,
   } = useSevenEleven(currentToken, {
     // Pass session key client for gasless rolls
     sessionKeyClient: hasValidSessionKey ? sessionKeyClient : undefined,
   });
+
+  // Determine if user has deposited (has play history)
+  const hasDeposited = useMemo(() => {
+    if (!playerStats) return false;
+    // If firstPlayTime > 0, user has played before (and thus deposited)
+    return playerStats.firstPlayTime > BigInt(0);
+  }, [playerStats]);
+
+  // Onboarding state
+  const { shouldShowOnboarding, completeOnboarding, skipOnboarding } = useOnboarding(
+    isConnected,
+    hasDeposited
+  );
+
+  // State to store openConnectModal for onboarding
+  const [connectModalOpener, setConnectModalOpener] = useState<(() => void) | undefined>(undefined);
 
   // Calculate balance status for color coding
   // Light green: balance > $2 (minDeposit)
@@ -400,6 +419,17 @@ export default function Home() {
       {/* Touch to Start overlay - only for iOS that needs motion permission */}
       {!hasStarted && needsPermission === true && <TouchToStart onStart={handleStart} />}
 
+      {/* Onboarding overlay for first-time visitors */}
+      {shouldShowOnboarding && (
+        <Onboarding
+          darkMode={darkMode}
+          onComplete={completeOnboarding}
+          onSkip={skipOnboarding}
+          isConnected={isConnected}
+          onConnect={connectModalOpener}
+        />
+      )}
+
       {/* Minimal header */}
       <header className="flex-shrink-0 flex items-center justify-between px-4 pb-3 safe-top relative z-20">
         {/* Left side: Connect + Game Balance */}
@@ -407,6 +437,11 @@ export default function Home() {
           <ConnectButton.Custom>
             {({ account, chain, openConnectModal, openAccountModal, mounted }) => {
               const connected = mounted && account && chain;
+              // Store openConnectModal for onboarding use
+              if (openConnectModal && !connectModalOpener) {
+                // Use setTimeout to avoid calling setState during render
+                setTimeout(() => setConnectModalOpener(() => openConnectModal), 0);
+              }
               return (
                 <button
                   onClick={connected ? openAccountModal : openConnectModal}
