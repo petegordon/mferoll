@@ -224,9 +224,13 @@ export function Onboarding({
           <p className="text-center text-lg">
             Grok gets his beak wet with mfer on every losing roll!
           </p>
-          <div className="flex items-center justify-center gap-2">
+          <div className="flex items-center justify-center gap-3">
             <TokenIcon token="MFER" size={32} />
-            <span className="font-medium">→ Grok Wallet</span>
+            <span className="text-xl">→</span>
+            <div className="flex flex-col items-center">
+              <img src="/grokai_mfer.png" alt="Grok AI" className="w-10 h-10 rounded-lg" />
+              <span className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Grok Wallet</span>
+            </div>
           </div>
         </div>
       ),

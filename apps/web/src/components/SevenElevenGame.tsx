@@ -293,59 +293,78 @@ export function SevenElevenGame({
         </div>
       </div>
 
-      {/* V2: Cumulative Meme Token Winnings */}
-      {hasMemeWinnings && (
-        <div
-          className={`rounded-xl p-4 mb-4 ${
-            darkMode ? 'bg-gradient-to-r from-purple-900/50 to-pink-900/50' : 'bg-gradient-to-r from-purple-100 to-pink-100'
-          }`}
-        >
-          <div className="flex justify-between items-center mb-2">
-            <span className={`text-sm font-medium ${darkMode ? 'text-purple-300' : 'text-purple-700'}`}>
-              Total Meme Winnings
-            </span>
-            <button
-              onClick={() => setShowWinnings(!showWinnings)}
-              className={`text-xs ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}
-            >
-              {showWinnings ? 'Hide' : 'Show'}
-            </button>
-          </div>
-          {showWinnings && memeWinnings && (
-            <div className="grid grid-cols-3 gap-2 mt-2">
-              {payoutTokens.map((token) => {
-                const amount = token.symbol.includes('MFER') ? memeWinnings.mfer :
-                              token.symbol.includes('BNKR') ? memeWinnings.bnkr :
-                              memeWinnings.drb;
-                const priceInfo = tokenPrices[token.symbol];
-                return (
-                  <div
-                    key={token.symbol}
-                    className="text-center cursor-pointer"
-                    onClick={() => setSelectedPayoutToken(token)}
-                  >
-                    <img src={token.icon} alt={token.symbol} className="w-6 h-6 rounded-full mx-auto mb-1" />
-                    <div className={`text-xs font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                      {formatMemeAmount(amount)}
-                    </div>
-                    <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                      {token.symbol}
-                    </div>
-                    {priceInfo && (
-                      <div className={`text-xs ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
-                        {priceInfo.priceUsd}
-                      </div>
-                    )}
+      {/* V2: Cumulative Meme Token Winnings - always show for Grok skim */}
+      <div
+        className={`rounded-xl p-4 mb-4 ${
+          darkMode ? 'bg-gradient-to-r from-purple-900/50 to-pink-900/50' : 'bg-gradient-to-r from-purple-100 to-pink-100'
+        }`}
+      >
+        <div className="flex justify-between items-center mb-2">
+          <span className={`text-sm font-medium ${darkMode ? 'text-purple-300' : 'text-purple-700'}`}>
+            Total Meme Winnings
+          </span>
+          <button
+            onClick={() => setShowWinnings(!showWinnings)}
+            className={`text-xs ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}
+          >
+            {showWinnings ? 'Hide' : 'Show'}
+          </button>
+        </div>
+        {showWinnings && memeWinnings && (
+          <div className="grid grid-cols-3 gap-2 mt-2">
+            {payoutTokens.map((token) => {
+              const amount = token.symbol.includes('MFER') ? memeWinnings.mfer :
+                            token.symbol.includes('BNKR') ? memeWinnings.bnkr :
+                            memeWinnings.drb;
+              const priceInfo = tokenPrices[token.symbol];
+              return (
+                <div
+                  key={token.symbol}
+                  className="text-center cursor-pointer"
+                  onClick={() => setSelectedPayoutToken(token)}
+                >
+                  <img src={token.icon} alt={token.symbol} className="w-6 h-6 rounded-full mx-auto mb-1" />
+                  <div className={`text-xs font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                    {formatMemeAmount(amount)}
                   </div>
-                );
-              })}
-            </div>
-          )}
-          <div className={`text-xs mt-2 ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}>
-            Winnings sent directly to your wallet
+                  <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                    {token.symbol}
+                  </div>
+                  {priceInfo && (
+                    <div className={`text-xs ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
+                      {priceInfo.priceUsd}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+        <div className={`text-xs mt-2 ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}>
+          Winnings sent directly to your wallet
+        </div>
+
+        {/* Grok skim fee display */}
+        <div className={`flex items-center justify-center gap-2 mt-3 pt-3 border-t ${darkMode ? 'border-purple-800/50' : 'border-purple-200'}`}>
+          <img
+            src={payoutTokens.find(t => t.symbol.includes('MFER'))?.icon || ''}
+            alt="MFER"
+            className="w-5 h-5 rounded-full"
+          />
+          <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>→</span>
+          <img
+            src="/grokai_mfer.png"
+            alt="Grok AI"
+            className="w-8 h-8 rounded-lg"
+          />
+          <div className="flex flex-col items-start">
+            <span className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Grok Wallet</span>
+            <span className={`text-sm font-medium ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}>
+              ${playerStats ? (Number(playerStats.totalLosses) * SEVEN_ELEVEN_CONSTANTS.LOSS_SKIM_USD).toFixed(2) : '0.00'}
+            </span>
           </div>
         </div>
-      )}
+      </div>
 
       {/* Session Key Status (when ZeroDev is enabled) */}
       {isZeroDevEnabled && (
