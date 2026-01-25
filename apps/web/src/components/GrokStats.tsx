@@ -8,12 +8,9 @@ interface GrokStatsProps {
 }
 
 export function GrokStats({ darkMode, iconUrl }: GrokStatsProps) {
-  const { stats, isLoading } = useGrokStats();
+  const { stats } = useGrokStats();
 
-  // Don't show if no stats yet
-  if (isLoading || !stats || stats.totalCount === BigInt(0)) {
-    return null;
-  }
+  const hasStats = stats && stats.totalCount > BigInt(0);
 
   return (
     <div
@@ -23,7 +20,7 @@ export function GrokStats({ darkMode, iconUrl }: GrokStatsProps) {
           : 'bg-white/90 text-gray-900'
       }`}
     >
-      {/* Icon */}
+      {/* Icon - always show */}
       {iconUrl ? (
         <img
           src={iconUrl}
@@ -38,20 +35,22 @@ export function GrokStats({ darkMode, iconUrl }: GrokStatsProps) {
         </div>
       )}
 
-      {/* Stats */}
-      <div className="flex flex-col">
-        <div className="flex items-center gap-1">
-          <span className={`text-sm font-bold ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}>
-            {stats.totalAmountFormatted}
-          </span>
-          <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-            MFER
-          </span>
+      {/* Stats - only show when there's data */}
+      {hasStats && (
+        <div className="flex flex-col">
+          <div className="flex items-center gap-1">
+            <span className={`text-sm font-bold ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}>
+              {stats.totalAmountFormatted}
+            </span>
+            <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+              MFER
+            </span>
+          </div>
+          <div className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+            {stats.totalCount.toString()} donations to Grok
+          </div>
         </div>
-        <div className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-          {stats.totalCount.toString()} donations to Grok
-        </div>
-      </div>
+      )}
     </div>
   );
 }
