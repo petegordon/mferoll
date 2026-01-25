@@ -28,7 +28,7 @@ interface IUniswapV3Pool {
  *      - Min deposit: $4.00
  *      - Win 7/11: 1.5x total payout (0.5x profit)
  *      - Win Doubles: 3x total payout (2x profit)
- *      - Loss: House keeps bet, $0.02 DRB sent to Grok wallet
+ *      - Loss: House keeps bet, $0.02 MFER sent to Grok wallet
  *      - Winnings: 1/3 MFER, 1/3 BNKR, 1/3 DRB sent directly to wallet
  */
 contract SevenEleven is IEntropyConsumer, ReentrancyGuard, Ownable {
@@ -129,6 +129,13 @@ contract SevenEleven is IEntropyConsumer, ReentrancyGuard, Ownable {
     mapping(address => uint256) public totalBnkrWon;
     mapping(address => uint256) public totalDrbWon;
 
+    // Cumulative skim paid per player (MFER sent to Grok on losses)
+    mapping(address => uint256) public totalSkimPaid;
+
+    // Global Grok wallet stats
+    uint256 public totalGrokSkimAmount;  // Total MFER sent to Grok
+    uint256 public totalGrokSkimCount;   // Number of skim transfers
+
     // Pending VRF requests: sequenceNumber => PendingRoll
     mapping(uint64 => PendingRoll) public pendingRolls;
 
@@ -156,7 +163,7 @@ contract SevenEleven is IEntropyConsumer, ReentrancyGuard, Ownable {
         uint256 bnkrPayout,
         uint256 drbPayout
     );
-    event LossSkim(address indexed player, uint256 drbAmount, address indexed grokWallet);
+    event LossSkim(address indexed player, uint256 mferAmount, address indexed grokWallet);
     event NewSession(address indexed player, uint256 sessionNumber);
     event PayoutReservesDeposited(address indexed token, uint256 amount);
     event PayoutReservesWithdrawn(address indexed token, uint256 amount);
@@ -258,8 +265,8 @@ contract SevenEleven is IEntropyConsumer, ReentrancyGuard, Ownable {
             (mferPayout, bnkrPayout, drbPayout) = _sendMemeTokenPayout(player, totalPayoutCents);
             stats.totalWins++;
         } else {
-            // Loss: house takes bet, send skim to Grok
-            _handleLoss(depositToken, betAmount);
+            // Loss: house takes bet, send MFER skim to Grok
+            _handleLoss(player, depositToken, betAmount);
             stats.totalLosses++;
         }
 
@@ -512,19 +519,22 @@ contract SevenEleven is IEntropyConsumer, ReentrancyGuard, Ownable {
     }
 
     /**
-     * @notice Handle a loss: house takes bet, send skim to Grok
+     * @notice Handle a loss: house takes bet, send MFER skim to Grok
      */
-    function _handleLoss(address depositToken, uint256 betAmount) internal {
+    function _handleLoss(address player, address depositToken, uint256 betAmount) internal {
         // House takes the bet
         houseLiquidity[depositToken] += betAmount;
 
-        // Send $0.02 DRB to Grok wallet
-        uint256 skimAmount = _centsToTokenAmount(DRB, LOSS_SKIM_CENTS);
+        // Send $0.02 MFER to Grok wallet
+        uint256 skimAmount = _centsToTokenAmount(MFER, LOSS_SKIM_CENTS);
 
-        if (payoutReserves[DRB] >= skimAmount) {
-            payoutReserves[DRB] -= skimAmount;
-            IERC20(DRB).safeTransfer(GROK_WALLET, skimAmount);
-            emit LossSkim(address(0), skimAmount, GROK_WALLET);
+        if (payoutReserves[MFER] >= skimAmount) {
+            payoutReserves[MFER] -= skimAmount;
+            totalSkimPaid[player] += skimAmount;
+            totalGrokSkimAmount += skimAmount;
+            totalGrokSkimCount++;
+            IERC20(MFER).safeTransfer(GROK_WALLET, skimAmount);
+            emit LossSkim(player, skimAmount, GROK_WALLET);
         }
     }
 
@@ -675,6 +685,14 @@ contract SevenEleven is IEntropyConsumer, ReentrancyGuard, Ownable {
 
     function getPlayerMemeWinnings(address player) external view returns (uint256 mfer, uint256 bnkr, uint256 drb) {
         return (totalMferWon[player], totalBnkrWon[player], totalDrbWon[player]);
+    }
+
+    function getPlayerSkimPaid(address player) external view returns (uint256) {
+        return totalSkimPaid[player];
+    }
+
+    function getGrokStats() external view returns (uint256 totalAmount, uint256 totalCount) {
+        return (totalGrokSkimAmount, totalGrokSkimCount);
     }
 
     function getSupportedTokens() external view returns (address[] memory) {

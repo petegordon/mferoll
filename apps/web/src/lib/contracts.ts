@@ -257,6 +257,44 @@ export const SEVEN_ELEVEN_ABI = [
     stateMutability: 'view',
     type: 'function',
   },
+  {
+    inputs: [{ name: 'player', type: 'address' }],
+    name: 'totalSkimPaid',
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [{ name: 'player', type: 'address' }],
+    name: 'getPlayerSkimPaid',
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'getGrokStats',
+    outputs: [
+      { name: 'totalAmount', type: 'uint256' },
+      { name: 'totalCount', type: 'uint256' },
+    ],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'totalGrokSkimAmount',
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'totalGrokSkimCount',
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
   // Payout reserves
   {
     inputs: [],
@@ -470,7 +508,7 @@ export const SEVEN_ELEVEN_ABI = [
     anonymous: false,
     inputs: [
       { indexed: true, name: 'player', type: 'address' },
-      { indexed: false, name: 'drbAmount', type: 'uint256' },
+      { indexed: false, name: 'mferAmount', type: 'uint256' },
       { indexed: true, name: 'grokWallet', type: 'address' },
     ],
     name: 'LossSkim',

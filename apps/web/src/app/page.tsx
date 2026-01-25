@@ -12,6 +12,7 @@ import { useSevenEleven, useSupportedTokens } from '@/hooks/useSevenEleven';
 import { useSessionKey } from '@/hooks/useSessionKey';
 import { useSmartWallet } from '@/hooks/useSmartWallet';
 import { DebugConsole, debugLog } from '@/components/DebugConsole';
+import { GrokStats } from '@/components/GrokStats';
 
 // Dynamic import for Three.js components to avoid SSR issues
 const DiceScene = dynamic(() => import('@/components/dice/DiceScene'), {
@@ -637,6 +638,9 @@ export default function Home() {
           </div>
         )}
       </div>
+
+      {/* Grok donation stats - lower left */}
+      <GrokStats darkMode={darkMode} iconUrl="/grokai_mfer.png" />
 
       {/* Debug console for mobile testing */}
       <DebugConsole />

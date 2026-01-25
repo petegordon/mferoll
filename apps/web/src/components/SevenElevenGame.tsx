@@ -541,7 +541,7 @@ export function SevenElevenGame({
       >
         <div>Win 7/11: {SEVEN_ELEVEN_CONSTANTS.WIN_7_11_MULTIPLIER}x | Win Doubles: {SEVEN_ELEVEN_CONSTANTS.WIN_DOUBLES_MULTIPLIER}x</div>
         <div>Winnings: MFER + BNKR + DRB to wallet</div>
-        <div>${SEVEN_ELEVEN_CONSTANTS.LOSS_SKIM_USD.toFixed(2)} DRB to Grok on loss</div>
+        <div>${SEVEN_ELEVEN_CONSTANTS.LOSS_SKIM_USD.toFixed(2)} MFER to Grok on loss</div>
       </div>
 
       {/* Token Info Modal */}

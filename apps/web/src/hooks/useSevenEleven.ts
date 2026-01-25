@@ -833,6 +833,13 @@ export function parseTokenAmount(amount: string, decimals: number): bigint {
   }
 }
 
+// Grok stats type
+export interface GrokStats {
+  totalAmount: bigint;
+  totalCount: bigint;
+  totalAmountFormatted: string;
+}
+
 // Token price info type
 export interface TokenPriceInfo {
   token: SupportedToken;
@@ -931,5 +938,54 @@ export function useTokenPrices(): {
   return {
     prices,
     isLoading: mferLoading || bnkrLoading || drbLoading,
+  };
+}
+
+// Hook to get Grok wallet stats (total MFER sent and count)
+export function useGrokStats(): {
+  stats: GrokStats | undefined;
+  isLoading: boolean;
+  refetch: () => void;
+} {
+  const chainId = useChainId();
+  const contractAddress = useMemo(() => getSevenElevenAddress(chainId), [chainId]);
+
+  const { data: grokStatsRaw, isLoading, refetch } = useReadContract({
+    address: contractAddress,
+    abi: SEVEN_ELEVEN_ABI,
+    functionName: 'getGrokStats',
+    query: {
+      enabled: contractAddress !== '0x0000000000000000000000000000000000000000',
+    },
+  });
+
+  const stats = useMemo(() => {
+    if (!grokStatsRaw) return undefined;
+    const [totalAmount, totalCount] = grokStatsRaw as [bigint, bigint];
+
+    // Format the amount (18 decimals for MFER)
+    const formatted = Number(formatUnits(totalAmount, 18));
+    let totalAmountFormatted: string;
+    if (formatted >= 1000000) {
+      totalAmountFormatted = `${(formatted / 1000000).toFixed(2)}M`;
+    } else if (formatted >= 1000) {
+      totalAmountFormatted = `${(formatted / 1000).toFixed(2)}K`;
+    } else if (formatted >= 1) {
+      totalAmountFormatted = formatted.toFixed(2);
+    } else {
+      totalAmountFormatted = formatted.toFixed(4);
+    }
+
+    return {
+      totalAmount,
+      totalCount,
+      totalAmountFormatted,
+    };
+  }, [grokStatsRaw]);
+
+  return {
+    stats,
+    isLoading,
+    refetch,
   };
 }
