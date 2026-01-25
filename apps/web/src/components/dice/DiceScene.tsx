@@ -29,8 +29,8 @@ function DiceGroup({ isRolling, targetFaces, onSettled, darkMode }: {
   let zOffset = 0.9;
   if (aspectRatio < 0.7) {
     // All portrait phones (iPhone 16 with toolbars ~0.5-0.65)
-    // Move dice UP by ~80% of one dice height (dice are ~1 unit tall)
-    zOffset = 0.1;
+    // Adjusted positioning for bottom UI clearance
+    zOffset = 0.6;
   } else if (aspectRatio < 0.85) {
     // Portrait tablets (iPad Pro at 0.75)
     zOffset = 0.5;
