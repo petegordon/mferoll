@@ -102,6 +102,7 @@ export function SevenElevenGame({
     isSessionKeyExpired,
     isCreatingSessionKey,
     createSessionKey,
+    clearSessionKey,
     sessionKeyAddress,
     error: sessionKeyError,
   } = sessionKey;
@@ -385,6 +386,18 @@ export function SevenElevenGame({
                 }`}
               >
                 {isAuthorizing ? 'Authorizing...' : 'Authorize'}
+              </button>
+            )}
+            {isSessionKeyAuthorized && (
+              <button
+                onClick={clearSessionKey}
+                className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-colors ${
+                  darkMode
+                    ? 'bg-gray-600 hover:bg-gray-500 text-white'
+                    : 'bg-gray-300 hover:bg-gray-400 text-gray-700'
+                }`}
+              >
+                Disable
               </button>
             )}
           </div>
