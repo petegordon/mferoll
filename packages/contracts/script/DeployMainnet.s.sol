@@ -30,7 +30,7 @@ contract DeployMainnetScript is Script {
     address constant DRB_WETH_POOL = 0x5116773e18A9C7bB03EBB961b38678E45E238923;
 
     // ============ Grok Wallet (receives loss skim) ============
-    address constant GROK_WALLET = 0xb1058c959987e3513600eb5b4fd82aeee2a0e4f9;
+    address constant GROK_WALLET = 0xB1058c959987E3513600EB5b4fD82Aeee2a0E4F9;
 
     function run() external {
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
