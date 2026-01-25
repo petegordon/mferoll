@@ -8,6 +8,8 @@ import { GoldCoinExplosion } from './GoldCoinExplosion';
 interface GrokStatsProps {
   darkMode: boolean;
   iconUrl?: string;
+  /** Trigger animation immediately on loss (increment to trigger) */
+  lossTrigger?: number;
 }
 
 // Hook to detect device type based on screen dimensions
@@ -42,48 +44,34 @@ function useDeviceType() {
   return deviceType;
 }
 
-export function GrokStats({ darkMode, iconUrl }: GrokStatsProps) {
+export function GrokStats({ darkMode, iconUrl, lossTrigger = 0 }: GrokStatsProps) {
   const { isConnected } = useAccount();
   const { stats } = useSessionGrokStats();
   const deviceType = useDeviceType();
 
-  // Track previous session amount to detect when Grok receives funds
-  const prevSessionAmountRef = useRef<string | null>(null);
+  // Track previous loss trigger to detect new losses
+  const prevLossTriggerRef = useRef(lossTrigger);
   const [showExplosion, setShowExplosion] = useState(false);
   const [glowing, setGlowing] = useState(false);
 
   // Session has MFER sent to Grok if sessionAmount > 0
   const hasSessionStats = stats && stats.sessionAmount > BigInt(0);
 
-  // Detect when Grok receives more MFER
+  // Trigger animation immediately when lossTrigger changes (loss event from parent)
   useEffect(() => {
-    if (!stats) return;
+    if (lossTrigger > 0 && lossTrigger !== prevLossTriggerRef.current) {
+      prevLossTriggerRef.current = lossTrigger;
 
-    const currentAmount = stats.sessionAmountFormatted;
-    const prevAmount = prevSessionAmountRef.current;
+      // Trigger animation
+      setShowExplosion(true);
+      setGlowing(true);
 
-    if (prevAmount !== null && prevAmount !== currentAmount) {
-      // Parse and compare amounts
-      const prevNum = parseFloat(prevAmount.replace(/[KM]/g, '')) || 0;
-      const currNum = parseFloat(currentAmount.replace(/[KM]/g, '')) || 0;
-
-      const prevMultiplier = prevAmount.includes('M') ? 1000000 : prevAmount.includes('K') ? 1000 : 1;
-      const currMultiplier = currentAmount.includes('M') ? 1000000 : currentAmount.includes('K') ? 1000 : 1;
-
-      if (currNum * currMultiplier > prevNum * prevMultiplier) {
-        // Grok got more MFER - trigger animation
-        setShowExplosion(true);
-        setGlowing(true);
-
-        // Stop glowing after animation
-        setTimeout(() => {
-          setGlowing(false);
-        }, 800);
-      }
+      // Stop glowing after animation
+      setTimeout(() => {
+        setGlowing(false);
+      }, 800);
     }
-
-    prevSessionAmountRef.current = currentAmount;
-  }, [stats]);
+  }, [lossTrigger]);
 
   const handleExplosionComplete = useCallback(() => {
     setShowExplosion(false);

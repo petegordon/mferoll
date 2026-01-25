@@ -51,6 +51,8 @@ export default function Home() {
   const [rollCount, setRollCount] = useState(0);
   const [awaitingBlockchainResult, setAwaitingBlockchainResult] = useState(false);
   const [waitingTooLong, setWaitingTooLong] = useState(false);
+  const [winTrigger, setWinTrigger] = useState(0);
+  const [lossTrigger, setLossTrigger] = useState(0);
   const isRollingRef = useRef(false);
   const rollStartTimeRef = useRef(0);
 
@@ -193,6 +195,13 @@ export default function Home() {
             setTargetFaces({ die1, die2 });
             setDiceResult({ die1, die2, won });
             setAwaitingBlockchainResult(false);
+
+            // Trigger animation immediately on win/loss
+            if (won) {
+              setWinTrigger(prev => prev + 1);
+            } else {
+              setLossTrigger(prev => prev + 1);
+            }
             // Keep isRolling true - let animation settle naturally
           }
         }
@@ -674,10 +683,10 @@ export default function Home() {
       </div>
 
       {/* Grok donation stats - lower left */}
-      <GrokStats darkMode={darkMode} iconUrl="/grokai_mfer.png" />
+      <GrokStats darkMode={darkMode} iconUrl="/grokai_mfer.png" lossTrigger={lossTrigger} />
 
       {/* Meme token wallet balances - lower right */}
-      <MemeWalletBalances darkMode={darkMode} />
+      <MemeWalletBalances darkMode={darkMode} winTrigger={winTrigger} />
 
       {/* Debug console for mobile testing */}
       <DebugConsole />

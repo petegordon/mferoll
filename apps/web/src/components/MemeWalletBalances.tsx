@@ -7,6 +7,8 @@ import { GoldCoinExplosion } from './GoldCoinExplosion';
 
 interface MemeWalletBalancesProps {
   darkMode: boolean;
+  /** Trigger animation immediately on win (increment to trigger) */
+  winTrigger?: number;
 }
 
 interface AnimatedBalanceItemProps {
@@ -76,12 +78,12 @@ function AnimatedBalanceItem({
   );
 }
 
-export function MemeWalletBalances({ darkMode }: MemeWalletBalancesProps) {
+export function MemeWalletBalances({ darkMode, winTrigger = 0 }: MemeWalletBalancesProps) {
   const { isConnected } = useAccount();
   const { balances } = useMemeWalletBalances();
 
-  // Track previous balances to detect increases
-  const prevBalancesRef = useRef<Map<string, string>>(new Map());
+  // Track previous win trigger to detect new wins
+  const prevWinTriggerRef = useRef(winTrigger);
 
   // Animation queue - which tokens need to animate
   const [animationQueue, setAnimationQueue] = useState<string[]>([]);
@@ -94,47 +96,21 @@ export function MemeWalletBalances({ darkMode }: MemeWalletBalancesProps) {
     balances.find(b => b.token.symbol.includes('BNKR')),
   ].filter(Boolean);
 
-  // Detect balance increases and queue animations
+  // Trigger animation immediately when winTrigger changes (win event from parent)
   useEffect(() => {
-    const tokensToAnimate: string[] = [];
+    if (winTrigger > 0 && winTrigger !== prevWinTriggerRef.current) {
+      prevWinTriggerRef.current = winTrigger;
 
-    orderedBalances.forEach(item => {
-      if (!item) return;
+      // Queue all three tokens for animation in order
+      const tokenSymbols = orderedBalances
+        .filter(Boolean)
+        .map(item => item!.token.symbol);
 
-      const prevBalance = prevBalancesRef.current.get(item.token.symbol);
-      const currentBalance = item.balanceFormatted;
-
-      // Check if balance increased (compare as numbers)
-      if (prevBalance !== undefined && prevBalance !== currentBalance) {
-        const prevNum = parseFloat(prevBalance.replace(/[KM]/g, '')) || 0;
-        const currNum = parseFloat(currentBalance.replace(/[KM]/g, '')) || 0;
-
-        // Handle K/M suffixes
-        const prevMultiplier = prevBalance.includes('M') ? 1000000 : prevBalance.includes('K') ? 1000 : 1;
-        const currMultiplier = currentBalance.includes('M') ? 1000000 : currentBalance.includes('K') ? 1000 : 1;
-
-        if (currNum * currMultiplier > prevNum * prevMultiplier) {
-          tokensToAnimate.push(item.token.symbol);
-        }
+      if (tokenSymbols.length > 0 && currentlyAnimating === null) {
+        setAnimationQueue(tokenSymbols);
       }
-
-      // Update previous balance
-      prevBalancesRef.current.set(item.token.symbol, currentBalance);
-    });
-
-    // Add to animation queue if not already animating these tokens
-    if (tokensToAnimate.length > 0 && currentlyAnimating === null) {
-      setAnimationQueue(prev => {
-        const newQueue = [...prev];
-        tokensToAnimate.forEach(token => {
-          if (!newQueue.includes(token)) {
-            newQueue.push(token);
-          }
-        });
-        return newQueue;
-      });
     }
-  }, [orderedBalances, currentlyAnimating]);
+  }, [winTrigger, orderedBalances, currentlyAnimating]);
 
   // Process animation queue
   useEffect(() => {
