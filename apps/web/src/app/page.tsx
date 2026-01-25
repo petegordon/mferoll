@@ -37,10 +37,40 @@ function needsMotionPermission(): boolean {
   return typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function';
 }
 
+// Helper to get initial dark mode preference
+function getInitialDarkMode(): boolean {
+  if (typeof window === 'undefined') return false;
+
+  // Check localStorage first (user's explicit choice)
+  const stored = localStorage.getItem('darkMode');
+  if (stored !== null) {
+    return stored === 'true';
+  }
+
+  // Fall back to system preference
+  return window.matchMedia('(prefers-color-scheme: dark)').matches;
+}
+
 export default function Home() {
   const { isConnected, address } = useAccount();
   const chainId = useChainId();
-  const [darkMode, setDarkMode] = useState(false);
+  const [darkMode, setDarkModeState] = useState(false);
+
+  // Wrapper to persist dark mode to localStorage
+  const setDarkMode = useCallback((value: boolean | ((prev: boolean) => boolean)) => {
+    setDarkModeState(prev => {
+      const newValue = typeof value === 'function' ? value(prev) : value;
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('darkMode', String(newValue));
+      }
+      return newValue;
+    });
+  }, []);
+
+  // Initialize dark mode from localStorage or system preference on mount
+  useEffect(() => {
+    setDarkModeState(getInitialDarkMode());
+  }, []);
   const [menuOpen, setMenuOpen] = useState(false);
   const [isRolling, setIsRolling] = useState(false);
   const [diceResult, setDiceResult] = useState<{ die1: number; die2: number; won?: boolean } | null>(null);
@@ -56,6 +86,7 @@ export default function Home() {
   // Optimistic update state
   const [optimisticPayouts, setOptimisticPayouts] = useState<{ mfer: bigint; bnkr: bigint; drb: bigint } | null>(null);
   const [optimisticSkim, setOptimisticSkim] = useState<bigint | null>(null);
+  const [optimisticBalance, setOptimisticBalance] = useState<bigint | null>(null);
   const isRollingRef = useRef(false);
   const rollStartTimeRef = useRef(0);
 
@@ -114,6 +145,29 @@ export default function Home() {
     return playerStats.firstPlayTime > BigInt(0);
   }, [playerStats]);
 
+  // Computed display balance - uses optimistic when available, falls back to real balance
+  const displayBalance = useMemo(() => {
+    if (optimisticBalance !== null) {
+      // Format optimistic balance (6 decimals for USDC)
+      return (Number(optimisticBalance) / 1e6).toFixed(2);
+    }
+    return Number(balanceFormatted).toFixed(2);
+  }, [optimisticBalance, balanceFormatted]);
+
+  // Clear optimistic balance when real balance catches up
+  useEffect(() => {
+    if (optimisticBalance !== null && balance !== undefined) {
+      // If real balance matches optimistic or we're not rolling, clear optimistic
+      if (!awaitingBlockchainResult && !isRolling) {
+        // Give a small delay for the real balance to update after transaction
+        const timeout = setTimeout(() => {
+          setOptimisticBalance(null);
+        }, 2000);
+        return () => clearTimeout(timeout);
+      }
+    }
+  }, [balance, optimisticBalance, awaitingBlockchainResult, isRolling]);
+
   // Onboarding state
   const { shouldShowOnboarding, dontShowAgainValue, completeOnboarding, skipOnboarding, showOnboarding } = useOnboarding(
     isConnected,
@@ -130,16 +184,18 @@ export default function Home() {
   // Red: balance < 2 rolls
   // Critical (flashing): balance < 1 roll
   const getBalanceColor = useCallback(() => {
-    if (!balance || !minDeposit || !betAmount) return 'gray';
+    // Use optimistic balance when available for consistent coloring
+    const effectiveBalance = optimisticBalance !== null ? optimisticBalance : balance;
+    if (!effectiveBalance || !minDeposit || !betAmount) return 'gray';
     const halfMinDeposit = minDeposit / BigInt(2);
     const twoRolls = betAmount * BigInt(2);
 
-    if (balance < betAmount) return 'critical'; // Can't even roll once - flash!
-    if (balance < twoRolls) return 'red';
-    if (balance < halfMinDeposit) return 'yellow';
-    if (balance < minDeposit) return 'gray';
+    if (effectiveBalance < betAmount) return 'critical'; // Can't even roll once - flash!
+    if (effectiveBalance < twoRolls) return 'red';
+    if (effectiveBalance < halfMinDeposit) return 'yellow';
+    if (effectiveBalance < minDeposit) return 'gray';
     return 'green';
-  }, [balance, minDeposit, betAmount]);
+  }, [balance, optimisticBalance, minDeposit, betAmount]);
 
   // Check if session key is fully authorized on the contract
   const isSessionKeyAuthorized = hasValidSessionKey &&
@@ -203,6 +259,11 @@ export default function Home() {
               });
             } else if (!won && args.mferSkimmed !== undefined) {
               setOptimisticSkim(args.mferSkimmed);
+            }
+
+            // Update optimistic balance from event (shows correct balance immediately)
+            if (args.playerBalance !== undefined) {
+              setOptimisticBalance(args.playerBalance);
             }
 
             // Inject target faces into ongoing animation - D6 will transition from shake to throw
@@ -337,6 +398,10 @@ export default function Home() {
       setIsRolling(true);
       setDiceResult(null);
       setAwaitingBlockchainResult(true);
+      // Optimistically deduct bet immediately
+      if (balance && betAmount) {
+        setOptimisticBalance(balance - betAmount);
+      }
     } else {
       const die1 = Math.floor(Math.random() * 6) + 1;
       const die2 = Math.floor(Math.random() * 6) + 1;
@@ -423,6 +488,10 @@ export default function Home() {
       setIsRolling(true);
       setDiceResult(null);
       setAwaitingBlockchainResult(true);
+      // Optimistically deduct bet immediately
+      if (balance && betAmount) {
+        setOptimisticBalance(balance - betAmount);
+      }
     } else {
       const die1 = Math.floor(Math.random() * 6) + 1;
       const die2 = Math.floor(Math.random() * 6) + 1;
@@ -508,7 +577,7 @@ export default function Home() {
               }`}
               aria-label="Open game menu"
             >
-              <span>{Number(balanceFormatted).toFixed(2)}</span>
+              <span>{displayBalance}</span>
               <img src={currentToken.icon} alt={currentToken.symbol} className="w-4 h-4 rounded-full" />
             </button>
           )}
@@ -692,6 +761,7 @@ export default function Home() {
                     createSessionKey,
                     clearSessionKey,
                   }}
+                  onDepositComplete={() => setMenuOpen(false)}
                 />
               </div>
             </div>

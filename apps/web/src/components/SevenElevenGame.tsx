@@ -52,11 +52,13 @@ interface SessionKeyState {
 interface SevenElevenGameProps {
   darkMode: boolean;
   sessionKey: SessionKeyState;
+  onDepositComplete?: () => void;
 }
 
 export function SevenElevenGame({
   darkMode,
   sessionKey,
+  onDepositComplete,
 }: SevenElevenGameProps) {
   const { isConnected } = useAccount();
   const depositTokens = useDepositTokens();
@@ -180,9 +182,11 @@ export function SevenElevenGame({
         // Balance has updated, hide the overlay
         setDepositStep('idle');
         setBalanceAtDepositStart(null);
+        // Close the menu after successful deposit
+        onDepositComplete?.();
       }
     }
-  }, [balance, depositStep, balanceAtDepositStart]);
+  }, [balance, depositStep, balanceAtDepositStart, onDepositComplete]);
 
   const handleCreateSessionKey = useCallback(async () => {
     try {

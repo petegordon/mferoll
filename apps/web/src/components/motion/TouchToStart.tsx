@@ -34,7 +34,7 @@ export function TouchToStart({ onStart }: TouchToStartProps) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 select-none touch-none"
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 select-none touch-none"
       onTouchEnd={handleTouch}
       onClick={handleTouch}
     >
