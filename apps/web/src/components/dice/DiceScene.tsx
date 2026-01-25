@@ -24,17 +24,18 @@ function DiceGroup({ isRolling, targetFaces, onSettled, darkMode }: {
   // Higher Z = dice appear lower on screen (away from camera looking down)
   // Lower/negative Z = dice appear higher on screen
   const aspectRatio = viewport.width / viewport.height;
+
+  // Debug: log aspect ratio (remove after testing)
+  console.log('DiceScene aspect ratio:', aspectRatio.toFixed(3));
+
   let zOffset = 0.9;
-  if (aspectRatio < 0.55) {
-    // Very portrait phones (iPhone 12 Pro, iPhone 16 with toolbars at ~0.46)
+  if (aspectRatio < 0.7) {
+    // All portrait phones (iPhone 16 with toolbars ~0.5-0.65)
     // Move dice UP significantly (~80% of dice height) to avoid overlap with bottom UI
     zOffset = -2.5;
-  } else if (aspectRatio < 0.65) {
-    // Portrait phones (iPhone SE at 0.56)
-    zOffset = -1.5;
   } else if (aspectRatio < 0.85) {
-    // Portrait tablets (iPad Pro at 0.75) - slight push down
-    zOffset = 1.8;
+    // Portrait tablets (iPad Pro at 0.75)
+    zOffset = 0.5;
   } else {
     // Landscape / desktop
     zOffset = 1.0;

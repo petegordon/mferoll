@@ -82,6 +82,7 @@ export function SevenElevenGame({
     walletBalanceFormatted,
     playerStats,
     memeWinnings,
+    playerSkimPaidFormatted,
     betAmountFormatted,
     minDeposit,
     minDepositFormatted,
@@ -360,7 +361,10 @@ export function SevenElevenGame({
           <div className="flex flex-col items-start">
             <span className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Grok Wallet</span>
             <span className={`text-sm font-medium ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}>
-              {playerStats ? playerStats.totalLosses.toString() : '0'} to Grok
+              {playerSkimPaidFormatted} MFER
+            </span>
+            <span className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+              {playerStats ? playerStats.totalLosses.toString() : '0'} losses
             </span>
           </div>
         </div>

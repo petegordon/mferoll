@@ -186,6 +186,10 @@ interface UseSevenElevenReturn {
   // V2: Meme token winnings
   memeWinnings: MemeWinnings | undefined;
 
+  // Player's total MFER skim paid to Grok
+  playerSkimPaid: bigint | undefined;
+  playerSkimPaidFormatted: string;
+
   // Bet info
   betAmount: bigint | undefined;
   betAmountFormatted: string;
@@ -341,6 +345,20 @@ export function useSevenEleven(
     const [mfer, bnkr, drb] = memeWinningsRaw as [bigint, bigint, bigint];
     return { mfer, bnkr, drb };
   }, [memeWinningsRaw]);
+
+  // Read player's total MFER skim paid to Grok
+  const {
+    data: playerSkimPaid,
+    refetch: refetchPlayerSkimPaid,
+  } = useReadContract({
+    address: contractAddress,
+    abi: SEVEN_ELEVEN_ABI,
+    functionName: 'getPlayerSkimPaid',
+    args: address ? [address] : undefined,
+    query: {
+      enabled: isConnected && !!address && contractAddress !== '0x0000000000000000000000000000000000000000',
+    },
+  });
 
   // V2: Read payout reserves
   const {
@@ -705,6 +723,17 @@ export function useSevenEleven(
       refetchStats();
       refetchMemeWinnings();
       refetchPayoutReserves();
+      refetchPlayerSkimPaid();
+    },
+  });
+
+  // Watch for LossSkim events to update Grok stats immediately
+  useWatchContractEvent({
+    address: contractAddress,
+    abi: SEVEN_ELEVEN_ABI,
+    eventName: 'LossSkim',
+    onLogs: () => {
+      refetchPlayerSkimPaid();
     },
   });
 
@@ -733,6 +762,17 @@ export function useSevenEleven(
     if (entropyFee === undefined) return '0';
     return formatUnits(entropyFee, 18);
   }, [entropyFee]);
+
+  // Format player skim paid to Grok (MFER is 18 decimals)
+  const playerSkimPaidFormatted = useMemo(() => {
+    if (playerSkimPaid === undefined) return '0';
+    const value = Number(formatUnits(playerSkimPaid as bigint, 18));
+    if (value === 0) return '0';
+    if (value >= 1000000) return `${(value / 1000000).toFixed(2)}M`;
+    if (value >= 1000) return `${(value / 1000).toFixed(2)}K`;
+    if (value >= 1) return value.toFixed(2);
+    return value.toFixed(4);
+  }, [playerSkimPaid]);
 
   const needsApproval = useMemo(() => {
     if (allowance === undefined || minDeposit === undefined) return false;
@@ -763,6 +803,8 @@ export function useSevenEleven(
     walletBalanceFormatted,
     playerStats,
     memeWinnings,
+    playerSkimPaid: playerSkimPaid as bigint | undefined,
+    playerSkimPaidFormatted,
     betAmount,
     betAmountFormatted,
     minDeposit,

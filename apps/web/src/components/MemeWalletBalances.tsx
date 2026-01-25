@@ -14,27 +14,32 @@ export function MemeWalletBalances({ darkMode }: MemeWalletBalancesProps) {
   // Only show when connected
   if (!isConnected) return null;
 
+  // Reorder to MFER, DRB, BNKR
+  const orderedBalances = [
+    balances.find(b => b.token.symbol.includes('MFER')),
+    balances.find(b => b.token.symbol.includes('DRB')),
+    balances.find(b => b.token.symbol.includes('BNKR')),
+  ].filter(Boolean);
+
   return (
     <div
-      className={`fixed z-0 flex flex-col items-end gap-1 ${
+      className={`fixed z-0 flex flex-col items-center gap-0.5 ${
         darkMode ? 'text-white' : 'text-gray-900'
       }`}
       style={{ bottom: '2vh', right: '2vw' }}
     >
-      {balances.map((item) => (
-        <div key={item.token.symbol} className="flex items-center gap-2">
-          <div className="flex flex-col items-end">
-            <span
-              className={`font-medium text-sm ${darkMode ? 'text-white' : 'text-gray-800'}`}
-            >
-              {item.balanceFormatted}
-            </span>
-          </div>
+      {orderedBalances.map((item) => item && (
+        <div key={item.token.symbol} className="flex flex-col items-center">
           <img
             src={item.token.icon}
             alt={item.token.symbol}
-            className="w-8 h-8 rounded-full"
+            className="w-7 h-7 rounded-full"
           />
+          <span
+            className={`font-medium text-xs ${darkMode ? 'text-white' : 'text-gray-800'}`}
+          >
+            {item.balanceFormatted}
+          </span>
         </div>
       ))}
     </div>
