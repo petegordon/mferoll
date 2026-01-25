@@ -53,6 +53,9 @@ export default function Home() {
   const [waitingTooLong, setWaitingTooLong] = useState(false);
   const [winTrigger, setWinTrigger] = useState(0);
   const [lossTrigger, setLossTrigger] = useState(0);
+  // Optimistic update state
+  const [optimisticPayouts, setOptimisticPayouts] = useState<{ mfer: bigint; bnkr: bigint; drb: bigint } | null>(null);
+  const [optimisticSkim, setOptimisticSkim] = useState<bigint | null>(null);
   const isRollingRef = useRef(false);
   const rollStartTimeRef = useRef(0);
 
@@ -165,7 +168,7 @@ export default function Home() {
 
         const logs = await publicClient.getLogs({
           address: contractAddress,
-          event: parseAbiItem('event RollSettled(uint64 indexed sequenceNumber, address indexed player, uint8 die1, uint8 die2, uint8 winType, uint256 mferPayout, uint256 bnkrPayout, uint256 drbPayout)'),
+          event: parseAbiItem('event RollSettled(uint64 indexed sequenceNumber, address indexed player, uint8 die1, uint8 die2, uint8 rollOutcome, uint256 mferPayout, uint256 bnkrPayout, uint256 drbPayout, uint256 mferSkimmed, uint256 playerBalance)'),
           args: {
             player: address,
           },
@@ -180,15 +183,26 @@ export default function Home() {
           const latestLog = logs[logs.length - 1];
           const args = latestLog.args;
 
-          debugLog.debug(`die1=${args.die1} die2=${args.die2} winType=${args.winType}`);
+          debugLog.debug(`die1=${args.die1} die2=${args.die2} rollOutcome=${args.rollOutcome}`);
 
           if (args.die1 !== undefined && args.die2 !== undefined) {
             const die1 = Number(args.die1);
             const die2 = Number(args.die2);
-            const won = Number(args.winType) > 0; // 0=Loss, 1=SevenOrEleven, 2=Doubles
+            const won = Number(args.rollOutcome) > 0; // 0=Loss, 1=Win, 2=Doubles
 
             const vrfTime = rollStartTimeRef.current > 0 ? Date.now() - rollStartTimeRef.current : 0;
             debugLog.info(`Result: ${die1}+${die2}=${die1 + die2} ${won ? 'WIN!' : 'LOSS'} (VRF: ${vrfTime}ms)`);
+
+            // Set optimistic state for instant UI updates
+            if (won && args.mferPayout !== undefined) {
+              setOptimisticPayouts({
+                mfer: args.mferPayout,
+                bnkr: args.bnkrPayout || BigInt(0),
+                drb: args.drbPayout || BigInt(0),
+              });
+            } else if (!won && args.mferSkimmed !== undefined) {
+              setOptimisticSkim(args.mferSkimmed);
+            }
 
             // Inject target faces into ongoing animation - D6 will transition from shake to throw
             // No need to increment rollCount - the animation is continuous
@@ -685,10 +699,21 @@ export default function Home() {
       </div>
 
       {/* Grok donation stats - lower left */}
-      <GrokStats darkMode={darkMode} iconUrl="/grokai_mfer.png" lossTrigger={lossTrigger} />
+      <GrokStats
+        darkMode={darkMode}
+        iconUrl="/grokai_mfer.png"
+        lossTrigger={lossTrigger}
+        optimisticSkim={optimisticSkim}
+        onOptimisticSkimCleared={() => setOptimisticSkim(null)}
+      />
 
       {/* Meme token wallet balances - lower right */}
-      <MemeWalletBalances darkMode={darkMode} winTrigger={winTrigger} />
+      <MemeWalletBalances
+        darkMode={darkMode}
+        winTrigger={winTrigger}
+        optimisticPayouts={optimisticPayouts}
+        onOptimisticPayoutsCleared={() => setOptimisticPayouts(null)}
+      />
 
       {/* Debug console for mobile testing */}
       <DebugConsole />

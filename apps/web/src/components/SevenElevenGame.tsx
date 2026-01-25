@@ -540,29 +540,65 @@ export function SevenElevenGame({
             darkMode ? 'bg-gray-700/80' : 'bg-gray-100'
           }`}
         >
-          <div className="grid grid-cols-2 gap-3 text-sm">
-            <div>
+          {/* Header row */}
+          <div className="grid grid-cols-3 gap-2 text-xs mb-2">
+            <div></div>
+            <div className={`text-center font-medium ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>
+              Session
+            </div>
+            <div className={`text-center font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+              Overall
+            </div>
+          </div>
+
+          {/* Stats rows */}
+          <div className="space-y-2 text-sm">
+            {/* 7/11 Won */}
+            <div className="grid grid-cols-3 gap-2 items-center">
               <span className={darkMode ? 'text-gray-400' : 'text-gray-500'}>7/11 Won</span>
-              <div className={`font-bold ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
-                {playerStats.totalWins.toString()}
+              <div className={`text-center font-bold ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
+                {(playerStats.sessionWins - playerStats.sessionDoublesWon).toString()}
+              </div>
+              <div className={`text-center font-bold ${darkMode ? 'text-green-400/60' : 'text-green-600/60'}`}>
+                {(playerStats.totalWins - playerStats.totalDoublesWon).toString()}
               </div>
             </div>
-            <div>
-              <span className={darkMode ? 'text-gray-400' : 'text-gray-500'}>Doubles Won</span>
-              <div className={`font-bold ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}>
+
+            {/* Doubles */}
+            <div className="grid grid-cols-3 gap-2 items-center">
+              <span className={darkMode ? 'text-gray-400' : 'text-gray-500'}>Doubles</span>
+              <div className={`text-center font-bold ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}>
+                {playerStats.sessionDoublesWon.toString()}
+              </div>
+              <div className={`text-center font-bold ${darkMode ? 'text-purple-400/60' : 'text-purple-600/60'}`}>
                 {playerStats.totalDoublesWon.toString()}
               </div>
             </div>
-            <div>
-              <span className={darkMode ? 'text-gray-400' : 'text-gray-500'}>Win Rate</span>
-              <div className={`font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                {winRate.toFixed(1)}%
+
+            {/* Losses */}
+            <div className="grid grid-cols-3 gap-2 items-center">
+              <span className={darkMode ? 'text-gray-400' : 'text-gray-500'}>Losses</span>
+              <div className={`text-center font-bold ${darkMode ? 'text-red-400' : 'text-red-600'}`}>
+                {playerStats.sessionLosses.toString()}
+              </div>
+              <div className={`text-center font-bold ${darkMode ? 'text-red-400/60' : 'text-red-600/60'}`}>
+                {playerStats.totalLosses.toString()}
               </div>
             </div>
-            <div>
-              <span className={darkMode ? 'text-gray-400' : 'text-gray-500'}>Losses</span>
-              <div className={`font-bold ${darkMode ? 'text-red-400' : 'text-red-600'}`}>
-                {playerStats.totalLosses.toString()}
+
+            {/* Win Rate */}
+            <div className="grid grid-cols-3 gap-2 items-center">
+              <span className={darkMode ? 'text-gray-400' : 'text-gray-500'}>Win Rate</span>
+              <div className={`text-center font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                {(() => {
+                  const sessionTotal = playerStats.sessionWins + playerStats.sessionLosses;
+                  if (sessionTotal === BigInt(0)) return '—';
+                  const rate = Number(playerStats.sessionWins * BigInt(100)) / Number(sessionTotal);
+                  return `${rate.toFixed(1)}%`;
+                })()}
+              </div>
+              <div className={`text-center font-bold ${darkMode ? 'text-white/60' : 'text-gray-900/60'}`}>
+                {winRate.toFixed(1)}%
               </div>
             </div>
           </div>

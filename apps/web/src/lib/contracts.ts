@@ -194,18 +194,15 @@ export const SEVEN_ELEVEN_ABI = [
     inputs: [{ name: 'player', type: 'address' }],
     name: 'getPlayerStats',
     outputs: [
-      {
-        components: [
-          { name: 'totalWins', type: 'uint256' },
-          { name: 'totalLosses', type: 'uint256' },
-          { name: 'totalDoublesWon', type: 'uint256' },
-          { name: 'firstPlayTime', type: 'uint256' },
-          { name: 'lastPlayTime', type: 'uint256' },
-          { name: 'totalSessions', type: 'uint256' },
-        ],
-        name: '',
-        type: 'tuple',
-      },
+      { name: 'totalWins', type: 'uint256' },
+      { name: 'totalLosses', type: 'uint256' },
+      { name: 'totalDoublesWon', type: 'uint256' },
+      { name: 'firstPlayTime', type: 'uint256' },
+      { name: 'lastPlayTime', type: 'uint256' },
+      { name: 'totalSessions', type: 'uint256' },
+      { name: 'sessionWins', type: 'uint256' },
+      { name: 'sessionLosses', type: 'uint256' },
+      { name: 'sessionDoublesWon', type: 'uint256' },
     ],
     stateMutability: 'view',
     type: 'function',
@@ -220,6 +217,9 @@ export const SEVEN_ELEVEN_ABI = [
       { name: 'firstPlayTime', type: 'uint256' },
       { name: 'lastPlayTime', type: 'uint256' },
       { name: 'totalSessions', type: 'uint256' },
+      { name: 'sessionWins', type: 'uint256' },
+      { name: 'sessionLosses', type: 'uint256' },
+      { name: 'sessionDoublesWon', type: 'uint256' },
     ],
     stateMutability: 'view',
     type: 'function',
@@ -496,10 +496,12 @@ export const SEVEN_ELEVEN_ABI = [
       { indexed: true, name: 'player', type: 'address' },
       { indexed: false, name: 'die1', type: 'uint8' },
       { indexed: false, name: 'die2', type: 'uint8' },
-      { indexed: false, name: 'winType', type: 'uint8' },
+      { indexed: false, name: 'rollOutcome', type: 'uint8' },
       { indexed: false, name: 'mferPayout', type: 'uint256' },
       { indexed: false, name: 'bnkrPayout', type: 'uint256' },
       { indexed: false, name: 'drbPayout', type: 'uint256' },
+      { indexed: false, name: 'mferSkimmed', type: 'uint256' },
+      { indexed: false, name: 'playerBalance', type: 'uint256' },
     ],
     name: 'RollSettled',
     type: 'event',
@@ -508,10 +510,13 @@ export const SEVEN_ELEVEN_ABI = [
     anonymous: false,
     inputs: [
       { indexed: true, name: 'player', type: 'address' },
-      { indexed: false, name: 'mferAmount', type: 'uint256' },
-      { indexed: true, name: 'grokWallet', type: 'address' },
+      { indexed: false, name: 'sessionNumber', type: 'uint256' },
+      { indexed: false, name: 'sessionWins', type: 'uint256' },
+      { indexed: false, name: 'sessionLosses', type: 'uint256' },
+      { indexed: false, name: 'sessionDoublesWon', type: 'uint256' },
+      { indexed: false, name: 'lastRollTime', type: 'uint256' },
     ],
-    name: 'LossSkim',
+    name: 'SessionEnded',
     type: 'event',
   },
   {
@@ -651,6 +656,13 @@ export enum WinType {
   Doubles = 2,    // 3x
 }
 
+// Roll outcome enum for events
+export enum RollOutcome {
+  Loss = 0,       // Lost
+  Win = 1,        // Won with 7 or 11
+  Doubles = 2,    // Won with doubles
+}
+
 // Player stats type (V2)
 export interface PlayerStats {
   totalWins: bigint;
@@ -659,6 +671,10 @@ export interface PlayerStats {
   firstPlayTime: bigint;
   lastPlayTime: bigint;
   totalSessions: bigint;
+  // Session stats
+  sessionWins: bigint;
+  sessionLosses: bigint;
+  sessionDoublesWon: bigint;
 }
 
 // Meme token winnings

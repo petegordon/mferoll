@@ -111,8 +111,26 @@ contract SevenElevenTest is Test {
     }
 
     function _createRandomnessForDice(uint8 die1, uint8 die2) internal pure returns (bytes32) {
-        uint256 low = uint256(die1 - 1);
-        uint256 high = uint256(die2 - 1) << 128;
+        // The contract calculates:
+        // die1 = (rand % 6) + 1
+        // die2 = ((rand >> 128) % 6) + 1
+        //
+        // Since 2^128 % 6 = 4, the high bits contribute (high * 4) to (rand % 6).
+        // So we need: (low + high * 4) % 6 = die1 - 1
+        // Given: high = die2 - 1
+        // Solve: low = (die1 - 1 - (die2 - 1) * 4) mod 6
+        uint256 die1Target = uint256(die1 - 1);
+        uint256 die2Target = uint256(die2 - 1);
+
+        // Calculate the contribution from high bits to the low modulo
+        uint256 highContribution = (die2Target * 4) % 6;
+
+        // Calculate the low value needed to get die1Target after considering high contribution
+        // We need: (low + highContribution) % 6 = die1Target
+        // So: low = (die1Target + 6 - highContribution) % 6
+        uint256 low = (die1Target + 6 - highContribution) % 6;
+        uint256 high = die2Target << 128;
+
         return bytes32(low | high);
     }
 
@@ -304,9 +322,9 @@ contract SevenElevenTest is Test {
         assertTrue(drbAfter > drbBefore, "Should receive DRB");
 
         // Check player stats
-        SevenEleven.PlayerStats memory stats = sevenEleven.getPlayerStats(player);
-        assertEq(stats.totalWins, 1);
-        assertEq(stats.totalLosses, 0);
+        (uint256 totalWins, uint256 totalLosses,,,,,,, ) = sevenEleven.getPlayerStats(player);
+        assertEq(totalWins, 1);
+        assertEq(totalLosses, 0);
     }
 
     function test_Settlement_WinDoubles() public {
@@ -322,9 +340,9 @@ contract SevenElevenTest is Test {
         _fulfillPythEntropy(sequenceNumber, randomness);
 
         // Check player stats
-        SevenEleven.PlayerStats memory stats = sevenEleven.getPlayerStats(player);
-        assertEq(stats.totalWins, 1);
-        assertEq(stats.totalDoublesWon, 1);
+        (uint256 totalWins,, uint256 totalDoublesWon,,,,,, ) = sevenEleven.getPlayerStats(player);
+        assertEq(totalWins, 1);
+        assertEq(totalDoublesWon, 1);
     }
 
     function test_Settlement_LoseOnOtherSum() public {
@@ -335,20 +353,20 @@ contract SevenElevenTest is Test {
         uint64 sequenceNumber = sevenEleven.roll(address(usdcToken));
         vm.stopPrank();
 
-        uint256 grokDrbBefore = drbToken.balanceOf(grokWallet);
+        uint256 grokMferBefore = mferToken.balanceOf(grokWallet);
 
         // Create randomness that produces dice sum of 6 (2 + 4) - not doubles, not 7/11
         bytes32 randomness = _createRandomnessForDice(2, 4);
         _fulfillPythEntropy(sequenceNumber, randomness);
 
-        uint256 grokDrbAfter = drbToken.balanceOf(grokWallet);
+        uint256 grokMferAfter = mferToken.balanceOf(grokWallet);
 
-        // Grok should receive skim ($0.02 DRB)
-        assertTrue(grokDrbAfter > grokDrbBefore, "Grok should receive DRB skim");
+        // Grok should receive MFER skim ($0.02 worth of MFER)
+        assertTrue(grokMferAfter > grokMferBefore, "Grok should receive MFER skim");
 
-        SevenEleven.PlayerStats memory stats = sevenEleven.getPlayerStats(player);
-        assertEq(stats.totalWins, 0);
-        assertEq(stats.totalLosses, 1);
+        (uint256 totalWins, uint256 totalLosses,,,,,,,) = sevenEleven.getPlayerStats(player);
+        assertEq(totalWins, 0);
+        assertEq(totalLosses, 1);
     }
 
     // ============ Session Tracking Tests ============
@@ -361,10 +379,10 @@ contract SevenElevenTest is Test {
         sevenEleven.roll(address(usdcToken));
         vm.stopPrank();
 
-        SevenEleven.PlayerStats memory stats = sevenEleven.getPlayerStats(player);
-        assertEq(stats.totalSessions, 1);
-        assertTrue(stats.firstPlayTime > 0);
-        assertTrue(stats.lastPlayTime > 0);
+        (,,,uint256 firstPlayTime, uint256 lastPlayTime, uint256 totalSessions,,,) = sevenEleven.getPlayerStats(player);
+        assertEq(totalSessions, 1);
+        assertTrue(firstPlayTime > 0);
+        assertTrue(lastPlayTime > 0);
     }
 
     function test_SessionTracking_NewSessionAfterGap() public {
@@ -385,8 +403,8 @@ contract SevenElevenTest is Test {
         sevenEleven.roll(address(usdcToken));
         vm.stopPrank();
 
-        SevenEleven.PlayerStats memory stats = sevenEleven.getPlayerStats(player);
-        assertEq(stats.totalSessions, 2);
+        (,,,,, uint256 totalSessions,,,) = sevenEleven.getPlayerStats(player);
+        assertEq(totalSessions, 2);
     }
 
     // ============ Authorization Tests ============

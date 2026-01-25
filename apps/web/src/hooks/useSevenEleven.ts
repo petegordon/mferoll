@@ -315,15 +315,29 @@ export function useSevenEleven(
 
   const playerStats = useMemo(() => {
     if (!playerStatsRaw) return undefined;
-    const stats = playerStatsRaw as {
-      totalWins: bigint;
-      totalLosses: bigint;
-      totalDoublesWon: bigint;
-      firstPlayTime: bigint;
-      lastPlayTime: bigint;
-      totalSessions: bigint;
+    // Contract now returns tuple of values instead of struct
+    const [
+      totalWins,
+      totalLosses,
+      totalDoublesWon,
+      firstPlayTime,
+      lastPlayTime,
+      totalSessions,
+      sessionWins,
+      sessionLosses,
+      sessionDoublesWon,
+    ] = playerStatsRaw as [bigint, bigint, bigint, bigint, bigint, bigint, bigint, bigint, bigint];
+    return {
+      totalWins,
+      totalLosses,
+      totalDoublesWon,
+      firstPlayTime,
+      lastPlayTime,
+      totalSessions,
+      sessionWins,
+      sessionLosses,
+      sessionDoublesWon,
     };
-    return stats;
   }, [playerStatsRaw]);
 
   // V2: Read meme token winnings
@@ -727,16 +741,6 @@ export function useSevenEleven(
     },
   });
 
-  // Watch for LossSkim events to update Grok stats immediately
-  useWatchContractEvent({
-    address: contractAddress,
-    abi: SEVEN_ELEVEN_ABI,
-    eventName: 'LossSkim',
-    onLogs: () => {
-      refetchPlayerSkimPaid();
-    },
-  });
-
   // Format values
   const balanceFormatted = useMemo(() => {
     if (balance === undefined) return '0';
@@ -1050,6 +1054,7 @@ export interface SessionGrokStats {
 }
 
 // Hook to track session-based MFER sent to Grok for current player
+// Now uses session stats from contract directly
 export function useSessionGrokStats(refetchTrigger?: number): {
   stats: SessionGrokStats | undefined;
   isLoading: boolean;
@@ -1058,12 +1063,8 @@ export function useSessionGrokStats(refetchTrigger?: number): {
   const chainId = useChainId();
   const contractAddress = useMemo(() => getSevenElevenAddress(chainId), [chainId]);
 
-  // Track the starting skim value when session began
-  const [sessionStartSkim, setSessionStartSkim] = useState<bigint | null>(null);
-  const [sessionStartCount, setSessionStartCount] = useState<number | null>(null);
-
   // Read current player skim paid
-  const { data: playerSkimPaid, isLoading, refetch: refetchSkimPaid } = useReadContract({
+  const { data: playerSkimPaid, isLoading: skimLoading, refetch: refetchSkimPaid } = useReadContract({
     address: contractAddress,
     abi: SEVEN_ELEVEN_ABI,
     functionName: 'getPlayerSkimPaid',
@@ -1073,8 +1074,8 @@ export function useSessionGrokStats(refetchTrigger?: number): {
     },
   });
 
-  // Read player stats to get loss count
-  const { data: playerStatsRaw, refetch: refetchStats } = useReadContract({
+  // Read player stats (now includes session stats from contract)
+  const { data: playerStatsRaw, isLoading: statsLoading, refetch: refetchStats } = useReadContract({
     address: contractAddress,
     abi: SEVEN_ELEVEN_ABI,
     functionName: 'getPlayerStats',
@@ -1097,33 +1098,39 @@ export function useSessionGrokStats(refetchTrigger?: number): {
     }
   }, [refetchTrigger, refetchSkimPaid, refetchStats]);
 
-  // Set session start values when player connects (only once per session)
-  useEffect(() => {
-    if (isConnected && address && playerSkimPaid !== undefined && sessionStartSkim === null) {
-      setSessionStartSkim(playerSkimPaid as bigint);
-    }
-    if (isConnected && address && playerStatsRaw && sessionStartCount === null) {
-      const stats = playerStatsRaw as { totalLosses: bigint };
-      setSessionStartCount(Number(stats.totalLosses));
-    }
-  }, [isConnected, address, playerSkimPaid, playerStatsRaw, sessionStartSkim, sessionStartCount]);
-
-  // Reset session when wallet disconnects
-  useEffect(() => {
-    if (!isConnected) {
-      setSessionStartSkim(null);
-      setSessionStartCount(null);
-    }
-  }, [isConnected]);
-
   const stats = useMemo(() => {
-    if (playerSkimPaid === undefined || sessionStartSkim === null) return undefined;
+    if (playerSkimPaid === undefined || !playerStatsRaw) return undefined;
 
+    // Contract now returns tuple of values
+    const [
+      , // totalWins
+      totalLosses,
+      , // totalDoublesWon
+      , // firstPlayTime
+      , // lastPlayTime
+      , // totalSessions
+      , // sessionWins
+      sessionLosses,
+      , // sessionDoublesWon
+    ] = playerStatsRaw as [bigint, bigint, bigint, bigint, bigint, bigint, bigint, bigint, bigint];
+
+    // Calculate session MFER amount based on session losses
+    // Each loss sends LOSS_SKIM_CENTS ($0.02) worth of MFER to Grok
+    // For now, we estimate based on session loss count
+    // This is an approximation - the exact amount depends on MFER price at each loss
+    const sessionCount = Number(sessionLosses);
+
+    // Since MFER sent depends on price at time of loss, we need to estimate
+    // We'll use the current player's total skim paid proportionally
+    const totalLossCount = Number(totalLosses);
     const currentSkim = playerSkimPaid as bigint;
-    const sessionAmount = currentSkim - sessionStartSkim;
 
-    const currentLosses = playerStatsRaw ? Number((playerStatsRaw as { totalLosses: bigint }).totalLosses) : 0;
-    const sessionCount = sessionStartCount !== null ? currentLosses - sessionStartCount : 0;
+    // Calculate session amount as proportion of total
+    let sessionAmount = BigInt(0);
+    if (totalLossCount > 0 && sessionCount > 0) {
+      // Approximate: sessionAmount = totalSkim * (sessionLosses / totalLosses)
+      sessionAmount = (currentSkim * BigInt(sessionCount)) / BigInt(totalLossCount);
+    }
 
     // Format the amounts (18 decimals for MFER)
     const formatAmount = (amount: bigint): string => {
@@ -1142,11 +1149,11 @@ export function useSessionGrokStats(refetchTrigger?: number): {
       totalAmount: currentSkim,
       totalAmountFormatted: formatAmount(currentSkim),
     };
-  }, [playerSkimPaid, sessionStartSkim, playerStatsRaw, sessionStartCount]);
+  }, [playerSkimPaid, playerStatsRaw]);
 
   return {
     stats,
-    isLoading,
+    isLoading: skimLoading || statsLoading,
   };
 }
 

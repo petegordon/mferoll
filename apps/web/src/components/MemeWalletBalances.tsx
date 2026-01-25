@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useMemeWalletBalances } from '@/hooks/useSevenEleven';
 import { useAccount } from 'wagmi';
 import { GoldCoinExplosion } from './GoldCoinExplosion';
@@ -9,6 +9,10 @@ interface MemeWalletBalancesProps {
   darkMode: boolean;
   /** Trigger animation immediately on win (increment to trigger) */
   winTrigger?: number;
+  /** Optimistic payouts from RollSettled event for instant display */
+  optimisticPayouts?: { mfer: bigint; bnkr: bigint; drb: bigint } | null;
+  /** Callback when optimistic state is cleared */
+  onOptimisticPayoutsCleared?: () => void;
 }
 
 interface AnimatedBalanceItemProps {
@@ -17,6 +21,8 @@ interface AnimatedBalanceItemProps {
   darkMode: boolean;
   isAnimating: boolean;
   onAnimationComplete: () => void;
+  /** Optimistic payout to add during animation */
+  optimisticPayout?: bigint;
 }
 
 function AnimatedBalanceItem({
@@ -25,6 +31,7 @@ function AnimatedBalanceItem({
   darkMode,
   isAnimating,
   onAnimationComplete,
+  optimisticPayout,
 }: AnimatedBalanceItemProps) {
   const [showExplosion, setShowExplosion] = useState(false);
   const [glowing, setGlowing] = useState(false);
@@ -47,6 +54,26 @@ function AnimatedBalanceItem({
     setShowExplosion(false);
     onAnimationComplete();
   }, [onAnimationComplete]);
+
+  // Calculate display value with optimistic payout
+  const displayValue = useMemo(() => {
+    if (glowing && optimisticPayout && optimisticPayout > BigInt(0)) {
+      // Parse current balance and add optimistic payout
+      const currentValue = parseFloat(balanceFormatted.replace(/[KM]/g, '')) || 0;
+      const multiplier = balanceFormatted.includes('M') ? 1000000 :
+                        balanceFormatted.includes('K') ? 1000 : 1;
+      const current = currentValue * multiplier;
+      const payout = Number(optimisticPayout) / 1e18; // Assume 18 decimals
+      const total = current + payout;
+
+      // Format the total
+      if (total >= 1000000) return `${(total / 1000000).toFixed(2)}M`;
+      if (total >= 1000) return `${(total / 1000).toFixed(2)}K`;
+      if (total >= 1) return total.toFixed(2);
+      return total.toFixed(4);
+    }
+    return balanceFormatted;
+  }, [balanceFormatted, optimisticPayout, glowing]);
 
   return (
     <div className="flex flex-col items-center relative overflow-visible">
@@ -72,13 +99,18 @@ function AnimatedBalanceItem({
           textShadow: glowing ? '0 0 10px #FFD700, 0 0 20px #FFA500' : 'none',
         }}
       >
-        {balanceFormatted}
+        {displayValue}
       </span>
     </div>
   );
 }
 
-export function MemeWalletBalances({ darkMode, winTrigger = 0 }: MemeWalletBalancesProps) {
+export function MemeWalletBalances({
+  darkMode,
+  winTrigger = 0,
+  optimisticPayouts,
+  onOptimisticPayoutsCleared,
+}: MemeWalletBalancesProps) {
   const { isConnected } = useAccount();
   const { balances } = useMemeWalletBalances();
 
@@ -95,6 +127,15 @@ export function MemeWalletBalances({ darkMode, winTrigger = 0 }: MemeWalletBalan
     balances.find(b => b.token.symbol.includes('DRB')),
     balances.find(b => b.token.symbol.includes('BNKR')),
   ].filter(Boolean);
+
+  // Get optimistic payout for a token
+  const getOptimisticPayout = useCallback((symbol: string): bigint | undefined => {
+    if (!optimisticPayouts) return undefined;
+    if (symbol.includes('MFER')) return optimisticPayouts.mfer;
+    if (symbol.includes('DRB')) return optimisticPayouts.drb;
+    if (symbol.includes('BNKR')) return optimisticPayouts.bnkr;
+    return undefined;
+  }, [optimisticPayouts]);
 
   // Trigger animation immediately when winTrigger changes (win event from parent)
   useEffect(() => {
@@ -125,9 +166,15 @@ export function MemeWalletBalances({ darkMode, winTrigger = 0 }: MemeWalletBalan
   const handleAnimationComplete = useCallback(() => {
     // Delay before starting next animation
     setTimeout(() => {
-      setCurrentlyAnimating(null);
+      setCurrentlyAnimating((prev) => {
+        // If this was the last animation in the queue, clear optimistic state
+        if (animationQueue.length === 0 && onOptimisticPayoutsCleared) {
+          onOptimisticPayoutsCleared();
+        }
+        return null;
+      });
     }, 300);
-  }, []);
+  }, [animationQueue.length, onOptimisticPayoutsCleared]);
 
   // Only show when connected
   if (!isConnected) return null;
@@ -147,6 +194,7 @@ export function MemeWalletBalances({ darkMode, winTrigger = 0 }: MemeWalletBalan
           darkMode={darkMode}
           isAnimating={currentlyAnimating === item.token.symbol}
           onAnimationComplete={handleAnimationComplete}
+          optimisticPayout={getOptimisticPayout(item.token.symbol)}
         />
       ))}
     </div>

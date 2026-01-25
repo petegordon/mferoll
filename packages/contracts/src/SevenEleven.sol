@@ -42,6 +42,13 @@ contract SevenEleven is IEntropyConsumer, ReentrancyGuard, Ownable {
         Doubles     // 3x
     }
 
+    // Roll outcome for events (matches WinType values)
+    enum RollOutcome {
+        Loss,       // 0 - Lost
+        Win,        // 1 - Won with 7 or 11
+        Doubles     // 2 - Won with doubles
+    }
+
     // ============ Structs ============
 
     // Token configuration for deposit tokens
@@ -61,6 +68,10 @@ contract SevenEleven is IEntropyConsumer, ReentrancyGuard, Ownable {
         uint256 firstPlayTime;
         uint256 lastPlayTime;
         uint256 totalSessions;
+        // Session stats (reset when new session starts after 1hr gap)
+        uint256 sessionWins;
+        uint256 sessionLosses;
+        uint256 sessionDoublesWon;
     }
 
     // Pending VRF roll request
@@ -158,12 +169,21 @@ contract SevenEleven is IEntropyConsumer, ReentrancyGuard, Ownable {
         address indexed player,
         uint8 die1,
         uint8 die2,
-        WinType winType,
+        RollOutcome rollOutcome,
         uint256 mferPayout,
         uint256 bnkrPayout,
-        uint256 drbPayout
+        uint256 drbPayout,
+        uint256 mferSkimmed,       // MFER sent to Grok (0 on win)
+        uint256 playerBalance      // USDC balance after roll
     );
-    event LossSkim(address indexed player, uint256 mferAmount, address indexed grokWallet);
+    event SessionEnded(
+        address indexed player,
+        uint256 sessionNumber,
+        uint256 sessionWins,
+        uint256 sessionLosses,
+        uint256 sessionDoublesWon,
+        uint256 lastRollTime
+    );
     event NewSession(address indexed player, uint256 sessionNumber);
     event PayoutReservesDeposited(address indexed token, uint256 amount);
     event PayoutReservesWithdrawn(address indexed token, uint256 amount);
@@ -252,6 +272,7 @@ contract SevenEleven is IEntropyConsumer, ReentrancyGuard, Ownable {
         uint256 mferPayout = 0;
         uint256 bnkrPayout = 0;
         uint256 drbPayout = 0;
+        uint256 skimAmount = 0;
 
         if (winType == WinType.Doubles) {
             // Return bet to player + 2x profit in meme coins
@@ -260,21 +281,41 @@ contract SevenEleven is IEntropyConsumer, ReentrancyGuard, Ownable {
             (mferPayout, bnkrPayout, drbPayout) = _sendMemeTokenPayout(player, profitCents);
             stats.totalWins++;
             stats.totalDoublesWon++;
+            stats.sessionWins++;
+            stats.sessionDoublesWon++;
         } else if (winType == WinType.SevenOrEleven) {
             // Return bet to player + 0.5x profit in meme coins
             playerBalances[player][depositToken] += betAmount;
             uint256 profitCents = betUsdCents / 2;
             (mferPayout, bnkrPayout, drbPayout) = _sendMemeTokenPayout(player, profitCents);
             stats.totalWins++;
+            stats.sessionWins++;
         } else {
             // Loss: house takes bet, send MFER skim to Grok
-            _handleLoss(player, depositToken, betAmount);
+            skimAmount = _handleLoss(player, depositToken, betAmount);
             stats.totalLosses++;
+            stats.sessionLosses++;
         }
 
         delete pendingRolls[sequenceNumber];
 
-        emit RollSettled(sequenceNumber, player, die1, die2, winType, mferPayout, bnkrPayout, drbPayout);
+        // Convert WinType to RollOutcome for event
+        RollOutcome rollOutcome = winType == WinType.Doubles ? RollOutcome.Doubles :
+                                  winType == WinType.SevenOrEleven ? RollOutcome.Win :
+                                  RollOutcome.Loss;
+
+        emit RollSettled(
+            sequenceNumber,
+            player,
+            die1,
+            die2,
+            rollOutcome,
+            mferPayout,
+            bnkrPayout,
+            drbPayout,
+            skimAmount,
+            playerBalances[player][depositToken]
+        );
     }
 
     // ============ Player Functions ============
@@ -522,13 +563,14 @@ contract SevenEleven is IEntropyConsumer, ReentrancyGuard, Ownable {
 
     /**
      * @notice Handle a loss: house takes bet, send MFER skim to Grok
+     * @return skimAmount The amount of MFER sent to Grok (0 if insufficient reserves)
      */
-    function _handleLoss(address player, address depositToken, uint256 betAmount) internal {
+    function _handleLoss(address player, address depositToken, uint256 betAmount) internal returns (uint256 skimAmount) {
         // House takes the bet
         houseLiquidity[depositToken] += betAmount;
 
         // Send $0.02 MFER to Grok wallet
-        uint256 skimAmount = _centsToTokenAmount(MFER, LOSS_SKIM_CENTS);
+        skimAmount = _centsToTokenAmount(MFER, LOSS_SKIM_CENTS);
 
         if (payoutReserves[MFER] >= skimAmount) {
             payoutReserves[MFER] -= skimAmount;
@@ -536,7 +578,8 @@ contract SevenEleven is IEntropyConsumer, ReentrancyGuard, Ownable {
             totalGrokSkimAmount += skimAmount;
             totalGrokSkimCount++;
             IERC20(MFER).safeTransfer(GROK_WALLET, skimAmount);
-            emit LossSkim(player, skimAmount, GROK_WALLET);
+        } else {
+            skimAmount = 0;
         }
     }
 
@@ -586,9 +629,26 @@ contract SevenEleven is IEntropyConsumer, ReentrancyGuard, Ownable {
         if (stats.firstPlayTime == 0) {
             stats.firstPlayTime = block.timestamp;
             stats.totalSessions = 1;
+            stats.sessionWins = 0;
+            stats.sessionLosses = 0;
+            stats.sessionDoublesWon = 0;
             emit NewSession(player, 1);
         } else if (block.timestamp - stats.lastPlayTime > SESSION_GAP) {
+            // Emit previous session data BEFORE resetting
+            emit SessionEnded(
+                player,
+                stats.totalSessions,
+                stats.sessionWins,
+                stats.sessionLosses,
+                stats.sessionDoublesWon,
+                stats.lastPlayTime
+            );
+
+            // Start new session
             stats.totalSessions++;
+            stats.sessionWins = 0;
+            stats.sessionLosses = 0;
+            stats.sessionDoublesWon = 0;
             emit NewSession(player, stats.totalSessions);
         }
 
@@ -681,8 +741,29 @@ contract SevenEleven is IEntropyConsumer, ReentrancyGuard, Ownable {
         return playerBalances[player][token];
     }
 
-    function getPlayerStats(address player) external view returns (PlayerStats memory) {
-        return playerStats[player];
+    function getPlayerStats(address player) external view returns (
+        uint256 totalWins,
+        uint256 totalLosses,
+        uint256 totalDoublesWon,
+        uint256 firstPlayTime,
+        uint256 lastPlayTime,
+        uint256 totalSessions,
+        uint256 sessionWins,
+        uint256 sessionLosses,
+        uint256 sessionDoublesWon
+    ) {
+        PlayerStats storage stats = playerStats[player];
+        return (
+            stats.totalWins,
+            stats.totalLosses,
+            stats.totalDoublesWon,
+            stats.firstPlayTime,
+            stats.lastPlayTime,
+            stats.totalSessions,
+            stats.sessionWins,
+            stats.sessionLosses,
+            stats.sessionDoublesWon
+        );
     }
 
     function getPlayerMemeWinnings(address player) external view returns (uint256 mfer, uint256 bnkr, uint256 drb) {
