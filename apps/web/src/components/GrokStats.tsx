@@ -2,7 +2,8 @@
 
 import { useSessionGrokStats } from '@/hooks/useSevenEleven';
 import { useAccount } from 'wagmi';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { GoldCoinExplosion } from './GoldCoinExplosion';
 
 interface GrokStatsProps {
   darkMode: boolean;
@@ -46,8 +47,47 @@ export function GrokStats({ darkMode, iconUrl }: GrokStatsProps) {
   const { stats } = useSessionGrokStats();
   const deviceType = useDeviceType();
 
+  // Track previous session amount to detect when Grok receives funds
+  const prevSessionAmountRef = useRef<string | null>(null);
+  const [showExplosion, setShowExplosion] = useState(false);
+  const [glowing, setGlowing] = useState(false);
+
   // Session has MFER sent to Grok if sessionAmount > 0
   const hasSessionStats = stats && stats.sessionAmount > BigInt(0);
+
+  // Detect when Grok receives more MFER
+  useEffect(() => {
+    if (!stats) return;
+
+    const currentAmount = stats.sessionAmountFormatted;
+    const prevAmount = prevSessionAmountRef.current;
+
+    if (prevAmount !== null && prevAmount !== currentAmount) {
+      // Parse and compare amounts
+      const prevNum = parseFloat(prevAmount.replace(/[KM]/g, '')) || 0;
+      const currNum = parseFloat(currentAmount.replace(/[KM]/g, '')) || 0;
+
+      const prevMultiplier = prevAmount.includes('M') ? 1000000 : prevAmount.includes('K') ? 1000 : 1;
+      const currMultiplier = currentAmount.includes('M') ? 1000000 : currentAmount.includes('K') ? 1000 : 1;
+
+      if (currNum * currMultiplier > prevNum * prevMultiplier) {
+        // Grok got more MFER - trigger animation
+        setShowExplosion(true);
+        setGlowing(true);
+
+        // Stop glowing after animation
+        setTimeout(() => {
+          setGlowing(false);
+        }, 800);
+      }
+    }
+
+    prevSessionAmountRef.current = currentAmount;
+  }, [stats]);
+
+  const handleExplosionComplete = useCallback(() => {
+    setShowExplosion(false);
+  }, []);
 
   // Device-specific positioning and sizing
   // Column layout: icon on top, stats below, all centered
@@ -58,24 +98,28 @@ export function GrokStats({ darkMode, iconUrl }: GrokStatsProps) {
         return {
           container: { bottom: '2vh', left: '2vw' },
           icon: { width: '100px', height: '100px' },
+          sizeMultiplier: 2.5,
         };
       case 'small-tablet':
         // iPad Mini: medium size, adjusted position
         return {
           container: { bottom: '2vh', left: '2vw' },
           icon: { width: '150px', height: '150px' },
+          sizeMultiplier: 3.5,
         };
       case 'tablet':
         // iPad Pro: larger icons
         return {
           container: { bottom: '5vh', left: '2vw' },
           icon: { width: 'clamp(140px, 30vmin, 220px)', height: 'clamp(140px, 30vmin, 220px)' },
+          sizeMultiplier: 4,
         };
       default:
         // iPhone 12 Pro, iPhone 16: standard phone size
         return {
           container: { bottom: '2vh', left: '2vw' },
           icon: { width: 'clamp(100px, 28vmin, 160px)', height: 'clamp(100px, 28vmin, 160px)' },
+          sizeMultiplier: 3,
         };
     }
   };
@@ -90,26 +134,37 @@ export function GrokStats({ darkMode, iconUrl }: GrokStatsProps) {
       style={styles.container}
     >
       {/* Icon - always show, size scales with viewport */}
-      {iconUrl ? (
-        <img
-          src={iconUrl}
-          alt="Grok"
-          className="rounded-xl"
-          style={styles.icon}
+      <div className="relative">
+        {iconUrl ? (
+          <img
+            src={iconUrl}
+            alt="Grok"
+            className={`rounded-xl transition-transform duration-300 ${glowing ? 'scale-110' : ''}`}
+            style={{
+              ...styles.icon,
+              filter: glowing ? 'drop-shadow(0 0 15px #FFD700) drop-shadow(0 0 30px #FFA500)' : 'none',
+            }}
+          />
+        ) : (
+          <div
+            className={`rounded-xl flex items-center justify-center transition-transform duration-300 ${
+              darkMode ? 'bg-purple-600' : 'bg-purple-500'
+            } ${glowing ? 'scale-110' : ''}`}
+            style={{
+              ...styles.icon,
+              fontSize: 'clamp(2rem, 5vmin, 4rem)',
+              filter: glowing ? 'drop-shadow(0 0 15px #FFD700) drop-shadow(0 0 30px #FFA500)' : 'none',
+            }}
+          >
+            🤖
+          </div>
+        )}
+        <GoldCoinExplosion
+          active={showExplosion}
+          onComplete={handleExplosionComplete}
+          sizeMultiplier={styles.sizeMultiplier}
         />
-      ) : (
-        <div
-          className={`rounded-xl flex items-center justify-center ${
-            darkMode ? 'bg-purple-600' : 'bg-purple-500'
-          }`}
-          style={{
-            ...styles.icon,
-            fontSize: 'clamp(2rem, 5vmin, 4rem)',
-          }}
-        >
-          🤖
-        </div>
-      )}
+      </div>
 
       {/* Stats - below icon */}
       <div className="flex flex-col items-center mt-1">
@@ -118,8 +173,12 @@ export function GrokStats({ darkMode, iconUrl }: GrokStatsProps) {
           <>
             <div className="flex items-center gap-1">
               <span
-                className={`font-bold ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}
-                style={{ fontSize: 'clamp(0.75rem, 2vmin, 1rem)' }}
+                className={`font-bold transition-all duration-300 ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}
+                style={{
+                  fontSize: 'clamp(0.75rem, 2vmin, 1rem)',
+                  color: glowing ? '#FFD700' : undefined,
+                  textShadow: glowing ? '0 0 10px #FFD700, 0 0 20px #FFA500' : 'none',
+                }}
               >
                 {stats.sessionAmountFormatted}
               </span>

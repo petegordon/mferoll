@@ -3,103 +3,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useMemeWalletBalances } from '@/hooks/useSevenEleven';
 import { useAccount } from 'wagmi';
+import { GoldCoinExplosion } from './GoldCoinExplosion';
 
 interface MemeWalletBalancesProps {
   darkMode: boolean;
-}
-
-interface CoinParticle {
-  id: number;
-  x: number;
-  y: number;
-  angle: number;
-  speed: number;
-  scale: number;
-  opacity: number;
-}
-
-function GoldCoinExplosion({ active, onComplete }: { active: boolean; onComplete: () => void }) {
-  const [particles, setParticles] = useState<CoinParticle[]>([]);
-  const animationRef = useRef<number | null>(null);
-  const startTimeRef = useRef<number>(0);
-
-  useEffect(() => {
-    if (active) {
-      // Create particles
-      const newParticles: CoinParticle[] = [];
-      const particleCount = 12;
-
-      for (let i = 0; i < particleCount; i++) {
-        const angle = (i / particleCount) * Math.PI * 2 + (Math.random() - 0.5) * 0.5;
-        newParticles.push({
-          id: i,
-          x: 0,
-          y: 0,
-          angle,
-          speed: 40 + Math.random() * 30,
-          scale: 0.5 + Math.random() * 0.5,
-          opacity: 1,
-        });
-      }
-
-      setParticles(newParticles);
-      startTimeRef.current = Date.now();
-
-      // Animate particles
-      const animate = () => {
-        const elapsed = Date.now() - startTimeRef.current;
-        const duration = 600;
-        const progress = Math.min(elapsed / duration, 1);
-
-        if (progress < 1) {
-          setParticles(prev => prev.map(p => ({
-            ...p,
-            x: Math.cos(p.angle) * p.speed * progress,
-            y: Math.sin(p.angle) * p.speed * progress - 20 * progress * progress, // Arc upward
-            opacity: 1 - progress,
-            scale: p.scale * (1 - progress * 0.5),
-          })));
-          animationRef.current = requestAnimationFrame(animate);
-        } else {
-          setParticles([]);
-          onComplete();
-        }
-      };
-
-      animationRef.current = requestAnimationFrame(animate);
-
-      return () => {
-        if (animationRef.current) {
-          cancelAnimationFrame(animationRef.current);
-        }
-      };
-    }
-  }, [active, onComplete]);
-
-  if (!active || particles.length === 0) return null;
-
-  return (
-    <div className="absolute inset-0 pointer-events-none overflow-visible">
-      {particles.map(p => (
-        <div
-          key={p.id}
-          className="absolute left-1/2 top-1/2"
-          style={{
-            transform: `translate(${p.x - 6}px, ${p.y - 6}px) scale(${p.scale})`,
-            opacity: p.opacity,
-          }}
-        >
-          <div
-            className="w-3 h-3 rounded-full"
-            style={{
-              background: 'linear-gradient(135deg, #FFD700 0%, #FFA500 50%, #FF8C00 100%)',
-              boxShadow: '0 0 4px #FFD700, inset 0 -1px 2px rgba(0,0,0,0.3)',
-            }}
-          />
-        </div>
-      ))}
-    </div>
-  );
 }
 
 interface AnimatedBalanceItemProps {
@@ -149,7 +56,7 @@ function AnimatedBalanceItem({
             glowing ? 'scale-125' : ''
           }`}
           style={{
-            filter: glowing ? 'drop-shadow(0 0 8px #FFD700) drop-shadow(0 0 16px #FFA500)' : 'none',
+            filter: glowing ? 'drop-shadow(0 0 10px #FFD700) drop-shadow(0 0 20px #FFA500)' : 'none',
           }}
         />
         <GoldCoinExplosion active={showExplosion} onComplete={handleExplosionComplete} />
@@ -160,7 +67,7 @@ function AnimatedBalanceItem({
         } ${glowing ? 'scale-110' : ''}`}
         style={{
           color: glowing ? '#FFD700' : undefined,
-          textShadow: glowing ? '0 0 8px #FFD700, 0 0 16px #FFA500' : 'none',
+          textShadow: glowing ? '0 0 10px #FFD700, 0 0 20px #FFA500' : 'none',
         }}
       >
         {balanceFormatted}
