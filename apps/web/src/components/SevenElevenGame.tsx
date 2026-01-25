@@ -423,15 +423,15 @@ export function SevenElevenGame({
         >
           <div className="grid grid-cols-2 gap-3 text-sm">
             <div>
-              <span className={darkMode ? 'text-gray-400' : 'text-gray-500'}>Wins</span>
+              <span className={darkMode ? 'text-gray-400' : 'text-gray-500'}>7/11 Won</span>
               <div className={`font-bold ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
                 {playerStats.totalWins.toString()}
               </div>
             </div>
             <div>
-              <span className={darkMode ? 'text-gray-400' : 'text-gray-500'}>Losses</span>
-              <div className={`font-bold ${darkMode ? 'text-red-400' : 'text-red-600'}`}>
-                {playerStats.totalLosses.toString()}
+              <span className={darkMode ? 'text-gray-400' : 'text-gray-500'}>Doubles Won</span>
+              <div className={`font-bold ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}>
+                {playerStats.totalDoublesWon.toString()}
               </div>
             </div>
             <div>
@@ -441,9 +441,9 @@ export function SevenElevenGame({
               </div>
             </div>
             <div>
-              <span className={darkMode ? 'text-gray-400' : 'text-gray-500'}>Doubles Won</span>
-              <div className={`font-bold ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}>
-                {playerStats.totalDoublesWon.toString()}
+              <span className={darkMode ? 'text-gray-400' : 'text-gray-500'}>Losses</span>
+              <div className={`font-bold ${darkMode ? 'text-red-400' : 'text-red-600'}`}>
+                {playerStats.totalLosses.toString()}
               </div>
             </div>
           </div>
