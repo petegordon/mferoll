@@ -13,6 +13,7 @@ import { useSessionKey } from '@/hooks/useSessionKey';
 import { useSmartWallet } from '@/hooks/useSmartWallet';
 import { DebugConsole, debugLog } from '@/components/DebugConsole';
 import { GrokStats } from '@/components/GrokStats';
+import { MemeWalletBalances } from '@/components/MemeWalletBalances';
 import { useOnboarding } from '@/hooks/useOnboarding';
 import { Onboarding } from '@/components/Onboarding';
 
@@ -666,6 +667,9 @@ export default function Home() {
 
       {/* Grok donation stats - lower left */}
       <GrokStats darkMode={darkMode} iconUrl="/grokai_mfer.png" />
+
+      {/* Meme token wallet balances - lower right */}
+      <MemeWalletBalances darkMode={darkMode} />
 
       {/* Debug console for mobile testing */}
       <DebugConsole />

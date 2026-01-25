@@ -997,3 +997,122 @@ export function useGrokStats(): {
     refetch,
   };
 }
+
+// Hook to get wallet balances for all meme tokens (MFER, BNKR, DRB)
+export interface MemeWalletBalance {
+  token: SupportedToken;
+  balance: bigint;
+  balanceFormatted: string;
+}
+
+export function useMemeWalletBalances(): {
+  balances: MemeWalletBalance[];
+  isLoading: boolean;
+  refetch: () => void;
+} {
+  const { address, isConnected } = useAccount();
+  const chainId = useChainId();
+  const payoutTokens = useMemo(() => getPayoutTokensForChain(chainId), [chainId]);
+  const contractAddress = useMemo(() => getSevenElevenAddress(chainId), [chainId]);
+
+  // Read wallet balance for MFER
+  const { data: mferBalance, isLoading: mferLoading, refetch: refetchMfer } = useReadContract({
+    address: payoutTokens[0]?.address,
+    abi: ERC20_ABI,
+    functionName: 'balanceOf',
+    args: address ? [address] : undefined,
+    query: {
+      enabled: isConnected && !!address && payoutTokens.length > 0,
+      refetchInterval: 10000, // Poll every 10 seconds
+    },
+  });
+
+  // Read wallet balance for BNKR
+  const { data: bnkrBalance, isLoading: bnkrLoading, refetch: refetchBnkr } = useReadContract({
+    address: payoutTokens[1]?.address,
+    abi: ERC20_ABI,
+    functionName: 'balanceOf',
+    args: address ? [address] : undefined,
+    query: {
+      enabled: isConnected && !!address && payoutTokens.length > 1,
+      refetchInterval: 10000,
+    },
+  });
+
+  // Read wallet balance for DRB
+  const { data: drbBalance, isLoading: drbLoading, refetch: refetchDrb } = useReadContract({
+    address: payoutTokens[2]?.address,
+    abi: ERC20_ABI,
+    functionName: 'balanceOf',
+    args: address ? [address] : undefined,
+    query: {
+      enabled: isConnected && !!address && payoutTokens.length > 2,
+      refetchInterval: 10000,
+    },
+  });
+
+  // Watch for RollSettled events to update balances
+  useWatchContractEvent({
+    address: contractAddress,
+    abi: SEVEN_ELEVEN_ABI,
+    eventName: 'RollSettled',
+    onLogs: () => {
+      // Refetch all meme token balances when a roll settles
+      refetchMfer();
+      refetchBnkr();
+      refetchDrb();
+    },
+  });
+
+  const refetch = useCallback(() => {
+    refetchMfer();
+    refetchBnkr();
+    refetchDrb();
+  }, [refetchMfer, refetchBnkr, refetchDrb]);
+
+  const formatMemeBalance = useCallback((balance: bigint | undefined, decimals: number): string => {
+    if (balance === undefined) return '0';
+    const value = Number(formatUnits(balance, decimals));
+    if (value === 0) return '0';
+    if (value >= 1000000) return `${(value / 1000000).toFixed(2)}M`;
+    if (value >= 1000) return `${(value / 1000).toFixed(2)}K`;
+    if (value >= 1) return value.toFixed(2);
+    return value.toFixed(4);
+  }, []);
+
+  const balances = useMemo(() => {
+    const result: MemeWalletBalance[] = [];
+
+    if (payoutTokens[0]) {
+      result.push({
+        token: payoutTokens[0],
+        balance: (mferBalance as bigint) || BigInt(0),
+        balanceFormatted: formatMemeBalance(mferBalance as bigint | undefined, payoutTokens[0].decimals),
+      });
+    }
+
+    if (payoutTokens[1]) {
+      result.push({
+        token: payoutTokens[1],
+        balance: (bnkrBalance as bigint) || BigInt(0),
+        balanceFormatted: formatMemeBalance(bnkrBalance as bigint | undefined, payoutTokens[1].decimals),
+      });
+    }
+
+    if (payoutTokens[2]) {
+      result.push({
+        token: payoutTokens[2],
+        balance: (drbBalance as bigint) || BigInt(0),
+        balanceFormatted: formatMemeBalance(drbBalance as bigint | undefined, payoutTokens[2].decimals),
+      });
+    }
+
+    return result;
+  }, [payoutTokens, mferBalance, bnkrBalance, drbBalance, formatMemeBalance]);
+
+  return {
+    balances,
+    isLoading: mferLoading || bnkrLoading || drbLoading,
+    refetch,
+  };
+}
