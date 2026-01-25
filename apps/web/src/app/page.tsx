@@ -116,7 +116,7 @@ export default function Home() {
   );
 
   // State to store openConnectModal for onboarding
-  const [connectModalOpener, setConnectModalOpener] = useState<(() => void) | undefined>(undefined);
+  const connectModalOpenerRef = useRef<(() => void) | undefined>(undefined);
 
   // Calculate balance status for color coding
   // Light green: balance > $2 (minDeposit)
@@ -430,7 +430,7 @@ export default function Home() {
           onComplete={completeOnboarding}
           onSkip={skipOnboarding}
           isConnected={isConnected}
-          onConnect={connectModalOpener}
+          onConnect={connectModalOpenerRef.current}
           initialDontShowAgain={dontShowAgainValue}
         />
       )}
@@ -443,9 +443,9 @@ export default function Home() {
             {({ account, chain, openConnectModal, openAccountModal, mounted }) => {
               const connected = mounted && account && chain;
               // Store openConnectModal for onboarding use
-              if (openConnectModal && !connectModalOpener) {
-                // Use setTimeout to avoid calling setState during render
-                setTimeout(() => setConnectModalOpener(() => openConnectModal), 0);
+              // Store openConnectModal in ref for onboarding use (no state update needed)
+              if (openConnectModal) {
+                connectModalOpenerRef.current = openConnectModal;
               }
               return (
                 <button
