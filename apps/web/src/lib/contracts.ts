@@ -622,7 +622,7 @@ export const TOKEN_ADDRESSES = TOKEN_ADDRESSES_BY_CHAIN[CHAIN_ID.BASE_MAINNET];
 // SevenEleven contract addresses by network
 export const SEVEN_ELEVEN_ADDRESS_BY_CHAIN = {
   [CHAIN_ID.BASE_MAINNET]: '0x0000000000000000000000000000000000000000' as `0x${string}`, // TODO: Deploy to mainnet
-  [CHAIN_ID.BASE_SEPOLIA]: '0x7bFD3342C45706811b532e30afe374177C2D516c' as `0x${string}`, // Deployed by script
+  [CHAIN_ID.BASE_SEPOLIA]: '0x9c1eD060E7bc4f64f6e0015b7552C4D1752ED904' as `0x${string}`, // Deployed by script
 } as const;
 
 // Helper to get contract address for current chain
@@ -637,7 +637,7 @@ export function getTokenIconUrl(address: string): string {
 }
 
 // Legacy export - will be deprecated
-export const SEVEN_ELEVEN_ADDRESS = '0x7bFD3342C45706811b532e30afe374177C2D516c' as `0x${string}`;
+export const SEVEN_ELEVEN_ADDRESS = '0x9c1eD060E7bc4f64f6e0015b7552C4D1752ED904' as `0x${string}`;
 
 // SevenEleven V2 game constants
 export const SEVEN_ELEVEN_CONSTANTS = {
