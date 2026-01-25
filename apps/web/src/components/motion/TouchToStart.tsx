@@ -45,7 +45,7 @@ export function TouchToStart({ onStart }: TouchToStartProps) {
             animation: status === 'idle' ? 'pulse-scale 2s ease-in-out infinite' : 'none',
           }}
         >
-          {status === 'idle' ? 'Touch to Start' : 'Starting...'}
+          {status === 'idle' ? 'Touch to Enable Motion' : 'Enabling...'}
         </div>
       </div>
 
