@@ -87,6 +87,7 @@ export default function Home() {
   const [optimisticPayouts, setOptimisticPayouts] = useState<{ mfer: bigint; bnkr: bigint; drb: bigint } | null>(null);
   const [optimisticSkim, setOptimisticSkim] = useState<bigint | null>(null);
   const [optimisticBalance, setOptimisticBalance] = useState<bigint | null>(null);
+  const [balanceBeforeRoll, setBalanceBeforeRoll] = useState<bigint | null>(null);
   const isRollingRef = useRef(false);
   const rollStartTimeRef = useRef(0);
 
@@ -154,19 +155,17 @@ export default function Home() {
     return Number(balanceFormatted).toFixed(2);
   }, [optimisticBalance, balanceFormatted]);
 
-  // Clear optimistic balance when real balance catches up
+  // Clear optimistic balance when real balance has actually updated from blockchain
   useEffect(() => {
-    if (optimisticBalance !== null && balance !== undefined) {
-      // If real balance matches optimistic or we're not rolling, clear optimistic
-      if (!awaitingBlockchainResult && !isRolling) {
-        // Give a small delay for the real balance to update after transaction
-        const timeout = setTimeout(() => {
-          setOptimisticBalance(null);
-        }, 2000);
-        return () => clearTimeout(timeout);
+    if (optimisticBalance !== null && balance !== undefined && balanceBeforeRoll !== null) {
+      // Only clear optimistic balance when the real balance has changed from pre-roll
+      // This ensures we don't flash back to old balance before blockchain state updates
+      if (balance !== balanceBeforeRoll) {
+        setOptimisticBalance(null);
+        setBalanceBeforeRoll(null);
       }
     }
-  }, [balance, optimisticBalance, awaitingBlockchainResult, isRolling]);
+  }, [balance, optimisticBalance, balanceBeforeRoll]);
 
   // Onboarding state
   const { shouldShowOnboarding, dontShowAgainValue, completeOnboarding, skipOnboarding, showOnboarding } = useOnboarding(
@@ -398,8 +397,9 @@ export default function Home() {
       setIsRolling(true);
       setDiceResult(null);
       setAwaitingBlockchainResult(true);
-      // Optimistically deduct bet immediately
+      // Optimistically deduct bet immediately and track pre-roll balance
       if (balance && betAmount) {
+        setBalanceBeforeRoll(balance);
         setOptimisticBalance(balance - betAmount);
       }
     } else {
@@ -488,8 +488,9 @@ export default function Home() {
       setIsRolling(true);
       setDiceResult(null);
       setAwaitingBlockchainResult(true);
-      // Optimistically deduct bet immediately
+      // Optimistically deduct bet immediately and track pre-roll balance
       if (balance && betAmount) {
+        setBalanceBeforeRoll(balance);
         setOptimisticBalance(balance - betAmount);
       }
     } else {
