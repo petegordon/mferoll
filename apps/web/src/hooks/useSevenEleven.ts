@@ -37,7 +37,7 @@ export interface SupportedToken {
   isPayoutToken: boolean;   // V2: Whether this is a payout token
 }
 
-// Deposit tokens (USDC, WETH only in V2)
+// Deposit tokens (USDC only in V2 - simpler UX)
 const MAINNET_DEPOSIT_TOKENS: SupportedToken[] = [
   {
     address: TOKEN_ADDRESSES_BY_CHAIN[CHAIN_ID.BASE_MAINNET].USDC,
@@ -45,15 +45,6 @@ const MAINNET_DEPOSIT_TOKENS: SupportedToken[] = [
     name: 'USD Coin',
     decimals: 6,
     icon: getTokenIconUrl(TOKEN_ADDRESSES_BY_CHAIN[CHAIN_ID.BASE_MAINNET].USDC),
-    isDepositToken: true,
-    isPayoutToken: false,
-  },
-  {
-    address: TOKEN_ADDRESSES_BY_CHAIN[CHAIN_ID.BASE_MAINNET].WETH,
-    symbol: 'WETH',
-    name: 'Wrapped Ether',
-    decimals: 18,
-    icon: getTokenIconUrl(TOKEN_ADDRESSES_BY_CHAIN[CHAIN_ID.BASE_MAINNET].WETH),
     isDepositToken: true,
     isPayoutToken: false,
   },
@@ -90,7 +81,7 @@ const MAINNET_PAYOUT_TOKENS: SupportedToken[] = [
   },
 ];
 
-// Testnet deposit tokens
+// Testnet deposit tokens (USDC only)
 const TESTNET_DEPOSIT_TOKENS: SupportedToken[] = [
   {
     address: TOKEN_ADDRESSES_BY_CHAIN[CHAIN_ID.BASE_SEPOLIA].USDC,
@@ -98,15 +89,6 @@ const TESTNET_DEPOSIT_TOKENS: SupportedToken[] = [
     name: 'USD Coin (Testnet)',
     decimals: 6,
     icon: 'https://assets-cdn.trustwallet.com/blockchains/base/assets/0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913/logo.png',
-    isDepositToken: true,
-    isPayoutToken: false,
-  },
-  {
-    address: TOKEN_ADDRESSES_BY_CHAIN[CHAIN_ID.BASE_SEPOLIA].WETH,
-    symbol: 'WETH',
-    name: 'Wrapped Ether (Testnet)',
-    decimals: 18,
-    icon: 'https://assets-cdn.trustwallet.com/blockchains/base/assets/0x4200000000000000000000000000000000000006/logo.png',
     isDepositToken: true,
     isPayoutToken: false,
   },

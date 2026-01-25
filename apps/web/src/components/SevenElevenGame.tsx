@@ -208,7 +208,8 @@ export function SevenElevenGame({
 
   return (
     <div className="w-full max-w-md mx-auto px-4">
-      {/* Token selector - Deposit tokens only */}
+      {/* Token selector - only show if multiple deposit tokens */}
+      {depositTokens.length > 1 && (
       <div className="flex items-center justify-center gap-2 mb-4 flex-wrap">
         {depositTokens.map((token) => (
           <button
@@ -238,6 +239,7 @@ export function SevenElevenGame({
           </button>
         ))}
       </div>
+      )}
 
       {/* Balance display */}
       <div
