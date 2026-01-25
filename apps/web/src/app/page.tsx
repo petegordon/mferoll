@@ -195,14 +195,8 @@ export default function Home() {
             setTargetFaces({ die1, die2 });
             setDiceResult({ die1, die2, won });
             setAwaitingBlockchainResult(false);
-
-            // Trigger animation immediately on win/loss
-            if (won) {
-              setWinTrigger(prev => prev + 1);
-            } else {
-              setLossTrigger(prev => prev + 1);
-            }
             // Keep isRolling true - let animation settle naturally
+            // Win/loss animations will trigger in handleDiceSettled
           }
         }
       } catch (err) {
@@ -348,7 +342,15 @@ export default function Home() {
       setDiceResult(targetFaces);
     }
     // If connected, diceResult is already set by VRF polling
-  }, [targetFaces, isConnected]);
+    // Trigger win/loss animations now that dice have settled
+    if (isConnected && diceResult && diceResult.won !== undefined) {
+      if (diceResult.won) {
+        setWinTrigger(prev => prev + 1);
+      } else {
+        setLossTrigger(prev => prev + 1);
+      }
+    }
+  }, [targetFaces, isConnected, diceResult]);
 
   // Listen for shake
   useShakeListener(shakeEnabled && hasStarted && !isRolling, handleRoll, isRolling);
