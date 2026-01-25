@@ -102,7 +102,8 @@ export function GoldCoinExplosion({ active, onComplete, sizeMultiplier = 1 }: Go
               height: `${particleSize}px`,
               borderRadius: '50%',
               background: 'linear-gradient(135deg, #FFD700 0%, #FFA500 50%, #FF8C00 100%)',
-              boxShadow: '0 0 6px #FFD700, inset 0 -1px 3px rgba(0,0,0,0.3)',
+              boxShadow: '0 0 6px #FFD700, 0 0 2px rgba(0,0,0,0.5), inset 0 -1px 3px rgba(0,0,0,0.3)',
+              border: '1px solid rgba(180, 120, 0, 0.6)',
             }}
           />
         </div>

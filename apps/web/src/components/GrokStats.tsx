@@ -116,13 +116,13 @@ export function GrokStats({ darkMode, iconUrl, lossTrigger = 0 }: GrokStatsProps
 
   return (
     <div
-      className={`fixed z-0 flex flex-col items-center ${
+      className={`fixed flex flex-col items-center ${
         darkMode ? 'text-white' : 'text-gray-900'
       }`}
-      style={styles.container}
+      style={{ ...styles.container, zIndex: showExplosion ? 50 : 0 }}
     >
       {/* Icon - always show, size scales with viewport */}
-      <div className="relative">
+      <div className="relative overflow-visible">
         {iconUrl ? (
           <img
             src={iconUrl}

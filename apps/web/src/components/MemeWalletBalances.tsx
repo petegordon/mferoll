@@ -49,8 +49,8 @@ function AnimatedBalanceItem({
   }, [onAnimationComplete]);
 
   return (
-    <div className="flex flex-col items-center relative">
-      <div className="relative">
+    <div className="flex flex-col items-center relative overflow-visible">
+      <div className="relative overflow-visible">
         <img
           src={token.icon}
           alt={token.symbol}
@@ -134,10 +134,10 @@ export function MemeWalletBalances({ darkMode, winTrigger = 0 }: MemeWalletBalan
 
   return (
     <div
-      className={`fixed z-0 flex flex-col items-center gap-3 ${
+      className={`fixed flex flex-col items-center gap-3 ${
         darkMode ? 'text-white' : 'text-gray-900'
       }`}
-      style={{ bottom: '12vh', right: '2vw' }}
+      style={{ bottom: '12vh', right: '2vw', zIndex: currentlyAnimating ? 50 : 0 }}
     >
       {orderedBalances.map((item) => item && (
         <AnimatedBalanceItem
