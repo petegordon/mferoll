@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useAccount } from 'wagmi';
 import { formatUnits } from 'viem';
 import {
@@ -122,8 +122,9 @@ export function SevenElevenGame({
 
   const [depositError, setDepositError] = useState<string | null>(null);
 
-  type DepositStep = 'idle' | 'approving' | 'depositing' | 'authorizing' | 'done';
+  type DepositStep = 'idle' | 'approving' | 'depositing' | 'authorizing' | 'done' | 'waiting_for_update';
   const [depositStep, setDepositStep] = useState<DepositStep>('idle');
+  const [balanceAtDepositStart, setBalanceAtDepositStart] = useState<bigint | null>(null);
 
   const minAmountNeeded = minDeposit && balance !== undefined
     ? (balance >= minDeposit ? BigInt(0) : minDeposit - balance)
@@ -143,6 +144,9 @@ export function SevenElevenGame({
       return;
     }
 
+    // Store starting balance to detect when it updates
+    setBalanceAtDepositStart(currentBalance);
+
     try {
       if (needsApproval || (allowance !== undefined && allowance < amount)) {
         setDepositStep('approving');
@@ -157,15 +161,28 @@ export function SevenElevenGame({
         await authorizeRoller(sessionKeyAddress);
       }
 
-      setDepositStep('done');
+      // Wait for balance to update before hiding overlay
+      setDepositStep('waiting_for_update');
       setDepositAmount('');
       setShowDepositModal(false);
+      // Don't set to idle here - the useEffect will do it when balance updates
     } catch (err) {
       console.error('Deposit flow failed:', err);
-    } finally {
       setDepositStep('idle');
+      setBalanceAtDepositStart(null);
     }
   }, [depositAmount, currentToken.decimals, currentToken.symbol, balance, minDeposit, needsApproval, allowance, approve, deposit, isZeroDevEnabled, sessionKeyAddress, isSessionKeyAuthorized, authorizeRoller]);
+
+  // Watch for balance updates after deposit to hide the overlay
+  useEffect(() => {
+    if (depositStep === 'waiting_for_update' && balanceAtDepositStart !== null && balance !== undefined) {
+      if (balance > balanceAtDepositStart) {
+        // Balance has updated, hide the overlay
+        setDepositStep('idle');
+        setBalanceAtDepositStart(null);
+      }
+    }
+  }, [balance, depositStep, balanceAtDepositStart]);
 
   const handleCreateSessionKey = useCallback(async () => {
     try {
@@ -244,10 +261,13 @@ export function SevenElevenGame({
               {depositStep === 'approving' && 'Approving...'}
               {depositStep === 'depositing' && 'Depositing...'}
               {depositStep === 'authorizing' && 'Authorizing...'}
+              {depositStep === 'waiting_for_update' && 'Updating Balance...'}
               {depositStep === 'done' && 'Complete!'}
             </div>
             <div className="text-gray-400 text-sm mt-2">
-              Please confirm in your wallet
+              {depositStep === 'waiting_for_update'
+                ? 'Waiting for blockchain confirmation'
+                : 'Please confirm in your wallet'}
             </div>
           </div>
         </div>
