@@ -14,7 +14,7 @@ export function GrokStats({ darkMode, iconUrl }: GrokStatsProps) {
 
   return (
     <div
-      className={`fixed bottom-4 left-4 z-30 flex items-center gap-2 px-3 py-2 rounded-xl shadow-lg backdrop-blur-sm ${
+      className={`fixed bottom-48 left-4 z-30 flex items-center gap-2 px-3 py-2 rounded-xl shadow-lg backdrop-blur-sm ${
         darkMode
           ? 'bg-gray-800/90 text-white'
           : 'bg-white/90 text-gray-900'
@@ -25,10 +25,10 @@ export function GrokStats({ darkMode, iconUrl }: GrokStatsProps) {
         <img
           src={iconUrl}
           alt="Grok"
-          className="w-8 h-8 rounded-full"
+          className="w-16 h-16 rounded-xl"
         />
       ) : (
-        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-lg ${
+        <div className={`w-16 h-16 rounded-xl flex items-center justify-center text-2xl ${
           darkMode ? 'bg-purple-600' : 'bg-purple-500'
         }`}>
           🤖
@@ -39,15 +39,15 @@ export function GrokStats({ darkMode, iconUrl }: GrokStatsProps) {
       {hasStats && (
         <div className="flex flex-col">
           <div className="flex items-center gap-1">
-            <span className={`text-sm font-bold ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}>
+            <span className={`text-base font-bold ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}>
               {stats.totalAmountFormatted}
             </span>
-            <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+            <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
               MFER
             </span>
           </div>
           <div className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-            {stats.totalCount.toString()} donations to Grok
+            {stats.totalCount.toString()} to Grok
           </div>
         </div>
       )}
