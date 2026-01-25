@@ -26,8 +26,8 @@ interface IUniswapV3Pool {
  * @dev V2 changes:
  *      - Bet: $0.40 per roll (USDC or WETH)
  *      - Min deposit: $4.00
- *      - Win 7/11: 1.5x total payout (0.5x profit)
- *      - Win Doubles: 3x total payout (2x profit)
+ *      - Win 7/11: Bet returned + 0.5x profit in meme coins
+ *      - Win Doubles: Bet returned + 2x profit in meme coins
  *      - Loss: House keeps bet, $0.02 MFER sent to Grok wallet
  *      - Winnings: 1/3 MFER, 1/3 BNKR, 1/3 DRB sent directly to wallet
  */
@@ -76,14 +76,14 @@ contract SevenEleven is IEntropyConsumer, ReentrancyGuard, Ownable {
     uint256 public constant BET_USD_CENTS = 40;           // $0.40
     uint256 public constant MIN_DEPOSIT_CENTS = 400;      // $4.00
     uint256 public constant LOSS_SKIM_CENTS = 2;          // $0.02
-    uint256 public constant WIN_7_11_BPS = 5000;          // 0.5x additional (1.5x total)
-    uint256 public constant WIN_DOUBLES_BPS = 20000;      // 2x additional (3x total)
+    uint256 public constant WIN_7_11_BPS = 5000;          // 0.5x profit
+    uint256 public constant WIN_DOUBLES_BPS = 20000;      // 2x profit
     uint256 public constant BPS_DENOMINATOR = 10000;
     uint256 public constant SESSION_GAP = 1 hours;
     uint32 public constant TWAP_PERIOD = 1800;            // 30 minutes for TWAP
 
     // Reserve warning threshold (enough for ~100 max payouts)
-    uint256 public constant RESERVE_WARNING_THRESHOLD = 100 * BET_USD_CENTS * 3; // ~$120 worth
+    uint256 public constant RESERVE_WARNING_THRESHOLD = 100 * BET_USD_CENTS * 2; // ~$80 worth
 
     // ============ Immutables ============
 
@@ -254,15 +254,17 @@ contract SevenEleven is IEntropyConsumer, ReentrancyGuard, Ownable {
         uint256 drbPayout = 0;
 
         if (winType == WinType.Doubles) {
-            // 3x total payout
-            uint256 totalPayoutCents = betUsdCents * 3;
-            (mferPayout, bnkrPayout, drbPayout) = _sendMemeTokenPayout(player, totalPayoutCents);
+            // Return bet to player + 2x profit in meme coins
+            playerBalances[player][depositToken] += betAmount;
+            uint256 profitCents = betUsdCents * 2;
+            (mferPayout, bnkrPayout, drbPayout) = _sendMemeTokenPayout(player, profitCents);
             stats.totalWins++;
             stats.totalDoublesWon++;
         } else if (winType == WinType.SevenOrEleven) {
-            // 1.5x total payout
-            uint256 totalPayoutCents = (betUsdCents * 3) / 2;
-            (mferPayout, bnkrPayout, drbPayout) = _sendMemeTokenPayout(player, totalPayoutCents);
+            // Return bet to player + 0.5x profit in meme coins
+            playerBalances[player][depositToken] += betAmount;
+            uint256 profitCents = betUsdCents / 2;
+            (mferPayout, bnkrPayout, drbPayout) = _sendMemeTokenPayout(player, profitCents);
             stats.totalWins++;
         } else {
             // Loss: house takes bet, send MFER skim to Grok
@@ -445,8 +447,8 @@ contract SevenEleven is IEntropyConsumer, ReentrancyGuard, Ownable {
         uint256 betAmount = getBetAmount(token);
         if (playerBalances[player][token] < betAmount) revert InsufficientBalance();
 
-        // Check payout reserves can cover max win (3x for doubles)
-        uint256 maxPayoutCents = BET_USD_CENTS * 3;
+        // Check payout reserves can cover max win (2x profit for doubles)
+        uint256 maxPayoutCents = BET_USD_CENTS * 2;
         _checkPayoutReserves(maxPayoutCents);
 
         // Deduct bet from player
