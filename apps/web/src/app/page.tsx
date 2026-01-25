@@ -17,6 +17,8 @@ import { MemeWalletBalances } from '@/components/MemeWalletBalances';
 import { useOnboarding } from '@/hooks/useOnboarding';
 import { Onboarding } from '@/components/Onboarding';
 
+import { DiceErrorBoundary } from '@/components/dice/DiceErrorBoundary';
+
 // Dynamic import for Three.js components to avoid SSR issues
 const DiceScene = dynamic(() => import('@/components/dice/DiceScene'), {
   ssr: false,
@@ -505,13 +507,19 @@ export default function Home() {
 
       {/* Full screen dice view */}
       <div className="flex-1 relative min-h-0 z-10">
-        <DiceScene
-          key={rollCount}
-          isRolling={isRolling}
-          targetFaces={targetFaces}
-          onDiceSettled={handleDiceSettled}
-          darkMode={darkMode}
-        />
+        <DiceErrorBoundary
+          onError={(error) => {
+            debugLog.error(`DiceScene crashed: ${error.message}`);
+          }}
+        >
+          <DiceScene
+            key={rollCount}
+            isRolling={isRolling}
+            targetFaces={targetFaces}
+            onDiceSettled={handleDiceSettled}
+            darkMode={darkMode}
+          />
+        </DiceErrorBoundary>
 
         {/* Initial roll button - before first roll (when not connected) */}
         {hasStarted && !diceResult && !isRolling && !isConnected && (
@@ -727,7 +735,11 @@ function useShakeListener(enabled: boolean, onShake: () => void, isRolling: bool
       if (acceleration > 20) {
         // Lock immediately for 3 seconds
         lockedUntilRef.current = now + 3000;
-        onShakeRef.current();
+        try {
+          onShakeRef.current();
+        } catch (err) {
+          console.error('Error during shake handler:', err);
+        }
       }
     };
 

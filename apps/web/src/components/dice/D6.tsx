@@ -18,7 +18,15 @@ function createPipTexture(pips: number, darkMode: boolean = false): THREE.Canvas
   const canvas = document.createElement('canvas');
   canvas.width = size;
   canvas.height = size;
-  const ctx = canvas.getContext('2d')!;
+  const ctx = canvas.getContext('2d');
+
+  // Fallback if canvas context unavailable (rare on mobile)
+  if (!ctx) {
+    console.error('Failed to get 2D canvas context for dice texture');
+    const fallbackTexture = new THREE.CanvasTexture(canvas);
+    fallbackTexture.needsUpdate = true;
+    return fallbackTexture;
+  }
 
   if (darkMode) {
     // Black background for dark mode
@@ -182,7 +190,10 @@ export function D6({ position, targetFace, onSettled, isRolling, darkMode = fals
   useFrame((_, delta) => {
     if (!meshRef.current || !isAnimating) return;
 
-    animationTimeRef.current += delta;
+    // Safety: clamp delta to prevent huge jumps if frame takes too long
+    const safeDelta = Math.min(delta, 0.1);
+
+    animationTimeRef.current += safeDelta;
     const throwDuration = 2.3; // Time for throw and land
     const settleDuration = 0.3; // Final settling animation
 
@@ -194,9 +205,9 @@ export function D6({ position, targetFace, onSettled, isRolling, darkMode = fals
       hasStartedThrowRef.current = false;
 
       // Rapid tumbling rotation
-      meshRef.current.rotation.x += spinSpeedsRef.current.x * delta;
-      meshRef.current.rotation.y += spinSpeedsRef.current.y * delta;
-      meshRef.current.rotation.z += spinSpeedsRef.current.z * delta;
+      meshRef.current.rotation.x += spinSpeedsRef.current.x * safeDelta;
+      meshRef.current.rotation.y += spinSpeedsRef.current.y * safeDelta;
+      meshRef.current.rotation.z += spinSpeedsRef.current.z * safeDelta;
 
       // Shake position around like in a cupped hand
       const shakeIntensity = 0.4;
