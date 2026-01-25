@@ -1,6 +1,6 @@
 'use client';
 
-import { Canvas } from '@react-three/fiber';
+import { Canvas, useThree } from '@react-three/fiber';
 import { Environment } from '@react-three/drei';
 import { DicePair } from './DicePair';
 
@@ -9,6 +9,45 @@ interface DiceSceneProps {
   targetFaces: { die1: number; die2: number } | null;
   onDiceSettled: () => void;
   darkMode?: boolean;
+}
+
+// Component that uses the offset inside Canvas
+function DiceGroup({ isRolling, targetFaces, onSettled, darkMode }: {
+  isRolling: boolean;
+  targetFaces: { die1: number; die2: number } | null;
+  onSettled: () => void;
+  darkMode: boolean;
+}) {
+  const { viewport } = useThree();
+
+  // Calculate offset based on viewport aspect ratio
+  // Higher Z = dice appear lower on screen (away from camera looking down)
+  const aspectRatio = viewport.width / viewport.height;
+  let zOffset = 0.9;
+  if (aspectRatio < 0.55) {
+    // Very portrait phones (iPhone 12 Pro at 0.46)
+    zOffset = 1.0;
+  } else if (aspectRatio < 0.65) {
+    // Portrait phones (iPhone SE at 0.56)
+    zOffset = 1.2;
+  } else if (aspectRatio < 0.85) {
+    // Portrait tablets (iPad Pro at 0.75) - slight push down
+    zOffset = 1.8;
+  } else {
+    // Landscape / desktop
+    zOffset = 1.0;
+  }
+
+  return (
+    <group position={[0, 0, zOffset]}>
+      <DicePair
+        isRolling={isRolling}
+        targetFaces={targetFaces}
+        onSettled={onSettled}
+        darkMode={darkMode}
+      />
+    </group>
+  );
 }
 
 export default function DiceScene({ isRolling, targetFaces, onDiceSettled, darkMode = false }: DiceSceneProps) {
@@ -41,15 +80,13 @@ export default function DiceScene({ isRolling, targetFaces, onDiceSettled, darkM
           <shadowMaterial transparent opacity={0.05} />
         </mesh>
 
-        {/* Dice - offset in Z to move down on screen */}
-        <group position={[0, 0, 0.9]}>
-          <DicePair
-            isRolling={isRolling}
-            targetFaces={targetFaces}
-            onSettled={onDiceSettled}
-            darkMode={darkMode}
-          />
-        </group>
+        {/* Dice - offset based on viewport aspect ratio */}
+        <DiceGroup
+          isRolling={isRolling}
+          targetFaces={targetFaces}
+          onSettled={onDiceSettled}
+          darkMode={darkMode}
+        />
       </Canvas>
     </div>
   );
