@@ -1040,6 +1040,110 @@ export function useGrokStats(): {
   };
 }
 
+// Session-based Grok stats for current player
+export interface SessionGrokStats {
+  sessionAmount: bigint;
+  sessionAmountFormatted: string;
+  sessionCount: number;
+  totalAmount: bigint;
+  totalAmountFormatted: string;
+}
+
+// Hook to track session-based MFER sent to Grok for current player
+export function useSessionGrokStats(): {
+  stats: SessionGrokStats | undefined;
+  isLoading: boolean;
+} {
+  const { address, isConnected } = useAccount();
+  const chainId = useChainId();
+  const contractAddress = useMemo(() => getSevenElevenAddress(chainId), [chainId]);
+
+  // Track the starting skim value when session began
+  const [sessionStartSkim, setSessionStartSkim] = useState<bigint | null>(null);
+  const [sessionStartCount, setSessionStartCount] = useState<number | null>(null);
+
+  // Read current player skim paid
+  const { data: playerSkimPaid, isLoading } = useReadContract({
+    address: contractAddress,
+    abi: SEVEN_ELEVEN_ABI,
+    functionName: 'getPlayerSkimPaid',
+    args: address ? [address] : undefined,
+    query: {
+      enabled: isConnected && !!address && contractAddress !== '0x0000000000000000000000000000000000000000',
+    },
+  });
+
+  // Read player stats to get loss count
+  const { data: playerStatsRaw } = useReadContract({
+    address: contractAddress,
+    abi: SEVEN_ELEVEN_ABI,
+    functionName: 'getPlayerStats',
+    args: address ? [address] : undefined,
+    query: {
+      enabled: isConnected && !!address && contractAddress !== '0x0000000000000000000000000000000000000000',
+    },
+  });
+
+  // Watch for LossSkim events to update immediately
+  useWatchContractEvent({
+    address: contractAddress,
+    abi: SEVEN_ELEVEN_ABI,
+    eventName: 'LossSkim',
+  });
+
+  // Set session start values when player connects (only once per session)
+  useEffect(() => {
+    if (isConnected && address && playerSkimPaid !== undefined && sessionStartSkim === null) {
+      setSessionStartSkim(playerSkimPaid as bigint);
+    }
+    if (isConnected && address && playerStatsRaw && sessionStartCount === null) {
+      const stats = playerStatsRaw as { totalLosses: bigint };
+      setSessionStartCount(Number(stats.totalLosses));
+    }
+  }, [isConnected, address, playerSkimPaid, playerStatsRaw, sessionStartSkim, sessionStartCount]);
+
+  // Reset session when wallet disconnects
+  useEffect(() => {
+    if (!isConnected) {
+      setSessionStartSkim(null);
+      setSessionStartCount(null);
+    }
+  }, [isConnected]);
+
+  const stats = useMemo(() => {
+    if (playerSkimPaid === undefined || sessionStartSkim === null) return undefined;
+
+    const currentSkim = playerSkimPaid as bigint;
+    const sessionAmount = currentSkim - sessionStartSkim;
+
+    const currentLosses = playerStatsRaw ? Number((playerStatsRaw as { totalLosses: bigint }).totalLosses) : 0;
+    const sessionCount = sessionStartCount !== null ? currentLosses - sessionStartCount : 0;
+
+    // Format the amounts (18 decimals for MFER)
+    const formatAmount = (amount: bigint): string => {
+      const value = Number(formatUnits(amount, 18));
+      if (value === 0) return '0';
+      if (value >= 1000000) return `${(value / 1000000).toFixed(2)}M`;
+      if (value >= 1000) return `${(value / 1000).toFixed(2)}K`;
+      if (value >= 1) return value.toFixed(2);
+      return value.toFixed(4);
+    };
+
+    return {
+      sessionAmount,
+      sessionAmountFormatted: formatAmount(sessionAmount),
+      sessionCount,
+      totalAmount: currentSkim,
+      totalAmountFormatted: formatAmount(currentSkim),
+    };
+  }, [playerSkimPaid, sessionStartSkim, playerStatsRaw, sessionStartCount]);
+
+  return {
+    stats,
+    isLoading,
+  };
+}
+
 // Hook to get wallet balances for all meme tokens (MFER, BNKR, DRB)
 export interface MemeWalletBalance {
   token: SupportedToken;

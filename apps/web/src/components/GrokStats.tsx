@@ -1,6 +1,7 @@
 'use client';
 
-import { useGrokStats } from '@/hooks/useSevenEleven';
+import { useSessionGrokStats } from '@/hooks/useSevenEleven';
+import { useAccount } from 'wagmi';
 import { useState, useEffect } from 'react';
 
 interface GrokStatsProps {
@@ -41,10 +42,12 @@ function useDeviceType() {
 }
 
 export function GrokStats({ darkMode, iconUrl }: GrokStatsProps) {
-  const { stats } = useGrokStats();
+  const { isConnected } = useAccount();
+  const { stats } = useSessionGrokStats();
   const deviceType = useDeviceType();
 
-  const hasStats = stats && stats.totalCount > BigInt(0);
+  // Session has MFER sent to Grok if sessionAmount > 0
+  const hasSessionStats = stats && stats.sessionAmount > BigInt(0);
 
   // Device-specific positioning and sizing
   // Column layout: icon on top, stats below, all centered
@@ -108,31 +111,42 @@ export function GrokStats({ darkMode, iconUrl }: GrokStatsProps) {
         </div>
       )}
 
-      {/* Stats - below icon, only show when there's data */}
-      {hasStats && (
-        <div className="flex flex-col items-center mt-1">
-          <div className="flex items-center gap-1">
-            <span
-              className={`font-bold ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}
-              style={{ fontSize: 'clamp(0.75rem, 2vmin, 1rem)' }}
+      {/* Stats - below icon */}
+      <div className="flex flex-col items-center mt-1">
+        {isConnected && hasSessionStats ? (
+          // Show session stats when player has sent MFER to Grok this session
+          <>
+            <div className="flex items-center gap-1">
+              <span
+                className={`font-bold ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}
+                style={{ fontSize: 'clamp(0.75rem, 2vmin, 1rem)' }}
+              >
+                {stats.sessionAmountFormatted}
+              </span>
+              <span
+                className={`${darkMode ? 'text-gray-400' : 'text-gray-500'}`}
+                style={{ fontSize: 'clamp(0.65rem, 1.5vmin, 0.875rem)' }}
+              >
+                MFER
+              </span>
+            </div>
+            <div
+              className={`${darkMode ? 'text-gray-500' : 'text-gray-400'}`}
+              style={{ fontSize: 'clamp(0.6rem, 1.2vmin, 0.75rem)' }}
             >
-              {stats.totalAmountFormatted}
-            </span>
-            <span
-              className={`${darkMode ? 'text-gray-400' : 'text-gray-500'}`}
-              style={{ fontSize: 'clamp(0.65rem, 1.5vmin, 0.875rem)' }}
-            >
-              MFER
-            </span>
-          </div>
+              {stats.sessionCount} to Grok
+            </div>
+          </>
+        ) : isConnected ? (
+          // Connected but no MFER sent this session yet
           <div
-            className={`${darkMode ? 'text-gray-500' : 'text-gray-400'}`}
-            style={{ fontSize: 'clamp(0.6rem, 1.2vmin, 0.75rem)' }}
+            className={`font-medium text-center ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}
+            style={{ fontSize: 'clamp(0.7rem, 1.8vmin, 0.9rem)' }}
           >
-            {stats.totalCount.toString()} to Grok
+            feed me mfer!
           </div>
-        </div>
-      )}
+        ) : null}
+      </div>
     </div>
   );
 }
