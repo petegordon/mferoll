@@ -66,7 +66,7 @@ export function SevenElevenGame({
   const [showDepositModal, setShowDepositModal] = useState(false);
   const [depositAmount, setDepositAmount] = useState('4.00');
   const [showStats, setShowStats] = useState(false);
-  const [showWinnings, setShowWinnings] = useState(false);
+  const [showWinnings, setShowWinnings] = useState(true);
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
   const [selectedPayoutToken, setSelectedPayoutToken] = useState<SupportedToken | null>(null);
 
