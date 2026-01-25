@@ -600,8 +600,8 @@ export const SEVEN_ELEVEN_ADDRESS = '0xc13078980fE702E1fb02A747096d5b395F9376C4'
 export const SEVEN_ELEVEN_CONSTANTS = {
   BET_USD: 0.40,
   MIN_DEPOSIT_USD: 4.00,
-  WIN_7_11_MULTIPLIER: 1.5,
-  WIN_DOUBLES_MULTIPLIER: 3,
+  WIN_7_11_MULTIPLIER: 0.5,  // Profit multiplier (0.5x = 50% profit on bet)
+  WIN_DOUBLES_MULTIPLIER: 2,  // Profit multiplier (2x = 200% profit on bet)
   LOSS_SKIM_USD: 0.02,
   WINNING_SUMS: [7, 11] as const,
 } as const;
