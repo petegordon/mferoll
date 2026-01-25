@@ -14,10 +14,12 @@ const TOKEN_ICONS = {
 
 interface OnboardingProps {
   darkMode: boolean;
+  setDarkMode: (dark: boolean) => void;
   onComplete: (dontShowAgain: boolean) => void;
   onSkip: () => void;
   isConnected: boolean;
   onConnect: (() => void) | undefined;
+  initialDontShowAgain?: boolean;
 }
 
 interface StepContent {
@@ -66,13 +68,15 @@ function DiceIcon({ size = 24, value = 3 }: { size?: number; value?: number }) {
 
 export function Onboarding({
   darkMode,
+  setDarkMode,
   onComplete,
   onSkip,
   isConnected,
   onConnect,
+  initialDontShowAgain = false,
 }: OnboardingProps) {
   const [currentStep, setCurrentStep] = useState(0);
-  const [dontShowAgain, setDontShowAgain] = useState(false);
+  const [dontShowAgain, setDontShowAgain] = useState(initialDontShowAgain);
 
   const steps: StepContent[] = [
     // Step 1: Welcome
@@ -96,7 +100,56 @@ export function Onboarding({
         </div>
       ),
     },
-    // Step 2: Deposit - show Game Balance concept
+    // Step 2: Theme selection
+    {
+      image: 'theme-preview',
+      title: 'Choose Your Vibe',
+      content: (
+        <div className="space-y-6 py-6">
+          <p className="text-center text-lg">
+            Play in light or dark mode - switch anytime!
+          </p>
+          <div className="flex justify-center">
+            <button
+              onClick={() => setDarkMode(!darkMode)}
+              className={`px-6 py-3 rounded-xl flex items-center gap-3 transition-colors ${
+                darkMode
+                  ? 'bg-gray-600 hover:bg-gray-500 text-white'
+                  : 'bg-gray-200 hover:bg-gray-300 text-gray-800'
+              }`}
+            >
+              {darkMode ? (
+                <>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="5"/>
+                    <line x1="12" y1="1" x2="12" y2="3"/>
+                    <line x1="12" y1="21" x2="12" y2="23"/>
+                    <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+                    <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+                    <line x1="1" y1="12" x2="3" y2="12"/>
+                    <line x1="21" y1="12" x2="23" y2="12"/>
+                    <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+                    <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+                  </svg>
+                  <span className="font-medium">Switch to Light</span>
+                </>
+              ) : (
+                <>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                  </svg>
+                  <span className="font-medium">Switch to Dark</span>
+                </>
+              )}
+            </button>
+          </div>
+          <p className={`text-center text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+            Currently: {darkMode ? 'Dark Mode' : 'Light Mode'}
+          </p>
+        </div>
+      ),
+    },
+    // Step 3: Deposit - show Game Balance concept
     {
       image: 'usdc-large',
       title: 'Make Your First Deposit',
@@ -232,7 +285,23 @@ export function Onboarding({
         <div className="p-6 pt-10 h-[520px] flex flex-col">
           {/* Image area - always same height */}
           <div className="h-44 flex items-center justify-center">
-            {currentContent.image === 'meme-icons' ? (
+            {currentContent.image === 'theme-preview' ? (
+              <div
+                className="rounded-2xl p-4 flex items-center justify-center"
+                style={{
+                  backgroundColor: darkMode ? '#1a1a2e' : '#1f2937',
+                  width: 180,
+                  height: 160
+                }}
+              >
+                <img
+                  src="/logo-transparent.png"
+                  alt="mferROLL"
+                  style={{ width: 140, height: 140, borderRadius: 12 }}
+                  className="object-contain"
+                />
+              </div>
+            ) : currentContent.image === 'meme-icons' ? (
               <div className="flex items-center justify-center gap-6">
                 <TokenIcon token="MFER" size={80} />
                 <TokenIcon token="BNKR" size={80} />
@@ -341,10 +410,7 @@ export function Onboarding({
                   </button>
                 ) : onConnect ? (
                   <button
-                    onClick={() => {
-                      onConnect();
-                      onComplete(dontShowAgain);
-                    }}
+                    onClick={onConnect}
                     className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium rounded-lg transition-colors"
                   >
                     Connect
