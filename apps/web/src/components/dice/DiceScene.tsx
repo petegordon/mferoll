@@ -26,17 +26,17 @@ function DiceGroup({ isRolling, targetFaces, onSettled, darkMode }: {
   // Each unit of Z offset moves dice about 1 dice-height on screen
   const aspectRatio = viewport.width / viewport.height;
 
-  let zOffset = 0.9;
+  let zOffset = 0.8;
   if (aspectRatio < 0.7) {
     // All portrait phones (iPhone 16 with toolbars ~0.5-0.65)
     // Adjusted positioning for bottom UI clearance
-    zOffset = 1.1;
+    zOffset = 1.0;
   } else if (aspectRatio < 0.85) {
     // Portrait tablets (iPad Pro at 0.75)
-    zOffset = 0.5;
+    zOffset = 0.4;
   } else {
     // Landscape / desktop
-    zOffset = 1.0;
+    zOffset = 0.9;
   }
 
   return (
