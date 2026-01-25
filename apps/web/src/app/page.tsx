@@ -140,7 +140,7 @@ export default function Home() {
 
         const logs = await publicClient.getLogs({
           address: contractAddress,
-          event: parseAbiItem('event RollSettled(uint64 indexed sequenceNumber, address indexed player, uint8 die1, uint8 die2, bool won, uint256 payout)'),
+          event: parseAbiItem('event RollSettled(uint64 indexed sequenceNumber, address indexed player, uint8 die1, uint8 die2, uint8 winType, uint256 mferPayout, uint256 bnkrPayout, uint256 drbPayout)'),
           args: {
             player: address,
           },
@@ -155,12 +155,12 @@ export default function Home() {
           const latestLog = logs[logs.length - 1];
           const args = latestLog.args;
 
-          debugLog.debug(`die1=${args.die1} die2=${args.die2} won=${args.won}`);
+          debugLog.debug(`die1=${args.die1} die2=${args.die2} winType=${args.winType}`);
 
           if (args.die1 !== undefined && args.die2 !== undefined) {
             const die1 = Number(args.die1);
             const die2 = Number(args.die2);
-            const won = Boolean(args.won);
+            const won = Number(args.winType) > 0; // 0=Loss, 1=SevenOrEleven, 2=Doubles
 
             const vrfTime = rollStartTimeRef.current > 0 ? Date.now() - rollStartTimeRef.current : 0;
             debugLog.info(`Result: ${die1}+${die2}=${die1 + die2} ${won ? 'WIN!' : 'LOSS'} (VRF: ${vrfTime}ms)`);
