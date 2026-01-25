@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   useAccount,
   useChainId,
@@ -1050,7 +1050,7 @@ export interface SessionGrokStats {
 }
 
 // Hook to track session-based MFER sent to Grok for current player
-export function useSessionGrokStats(): {
+export function useSessionGrokStats(refetchTrigger?: number): {
   stats: SessionGrokStats | undefined;
   isLoading: boolean;
 } {
@@ -1062,29 +1062,40 @@ export function useSessionGrokStats(): {
   const [sessionStartSkim, setSessionStartSkim] = useState<bigint | null>(null);
   const [sessionStartCount, setSessionStartCount] = useState<number | null>(null);
 
-  // Read current player skim paid (poll every 3 seconds for updates)
-  const { data: playerSkimPaid, isLoading } = useReadContract({
+  // Read current player skim paid
+  const { data: playerSkimPaid, isLoading, refetch: refetchSkimPaid } = useReadContract({
     address: contractAddress,
     abi: SEVEN_ELEVEN_ABI,
     functionName: 'getPlayerSkimPaid',
     args: address ? [address] : undefined,
     query: {
       enabled: isConnected && !!address && contractAddress !== '0x0000000000000000000000000000000000000000',
-      refetchInterval: 3000,
     },
   });
 
-  // Read player stats to get loss count (poll every 3 seconds for updates)
-  const { data: playerStatsRaw } = useReadContract({
+  // Read player stats to get loss count
+  const { data: playerStatsRaw, refetch: refetchStats } = useReadContract({
     address: contractAddress,
     abi: SEVEN_ELEVEN_ABI,
     functionName: 'getPlayerStats',
     args: address ? [address] : undefined,
     query: {
       enabled: isConnected && !!address && contractAddress !== '0x0000000000000000000000000000000000000000',
-      refetchInterval: 3000,
     },
   });
+
+  // Refetch when trigger changes (on loss)
+  const prevTriggerRef = useRef(refetchTrigger);
+  useEffect(() => {
+    if (refetchTrigger !== undefined && refetchTrigger !== prevTriggerRef.current) {
+      prevTriggerRef.current = refetchTrigger;
+      // Small delay to allow blockchain state to update
+      setTimeout(() => {
+        refetchSkimPaid();
+        refetchStats();
+      }, 1000);
+    }
+  }, [refetchTrigger, refetchSkimPaid, refetchStats]);
 
   // Set session start values when player connects (only once per session)
   useEffect(() => {

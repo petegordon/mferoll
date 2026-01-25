@@ -46,7 +46,7 @@ function useDeviceType() {
 
 export function GrokStats({ darkMode, iconUrl, lossTrigger = 0 }: GrokStatsProps) {
   const { isConnected } = useAccount();
-  const { stats } = useSessionGrokStats();
+  const { stats } = useSessionGrokStats(lossTrigger);
   const deviceType = useDeviceType();
 
   // Track previous loss trigger to detect new losses
