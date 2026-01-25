@@ -23,10 +23,10 @@ export function MemeWalletBalances({ darkMode }: MemeWalletBalancesProps) {
 
   return (
     <div
-      className={`fixed z-0 flex flex-col items-center gap-0.5 ${
+      className={`fixed z-0 flex flex-col items-center gap-3 ${
         darkMode ? 'text-white' : 'text-gray-900'
       }`}
-      style={{ bottom: '2vh', right: '2vw' }}
+      style={{ bottom: '12vh', right: '2vw' }}
     >
       {orderedBalances.map((item) => item && (
         <div key={item.token.symbol} className="flex flex-col items-center">
