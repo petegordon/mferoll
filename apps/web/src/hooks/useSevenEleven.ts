@@ -280,6 +280,7 @@ export function useSevenEleven(
     args: address ? [address, token.address] : undefined,
     query: {
       enabled: isConnected && !!address && contractAddress !== '0x0000000000000000000000000000000000000000',
+      refetchInterval: 5000, // Poll every 5 seconds to catch balance updates
     },
   });
 
@@ -665,6 +666,13 @@ export function useSevenEleven(
       refetchBalance();
       refetchAllowance();
     },
+  });
+
+  useWatchContractEvent({
+    address: contractAddress,
+    abi: SEVEN_ELEVEN_ABI,
+    eventName: 'Deposited',
+    onLogs: () => refetchBalance(),
   });
 
   useWatchContractEvent({

@@ -47,31 +47,32 @@ export function GrokStats({ darkMode, iconUrl }: GrokStatsProps) {
   const hasStats = stats && stats.totalCount > BigInt(0);
 
   // Device-specific positioning and sizing
+  // Column layout: icon on top, stats below, all centered
   const getStyles = () => {
     switch (deviceType) {
       case 'small-phone':
         // iPhone SE: smaller, adjusted position
         return {
-          container: { bottom: '2vh', left: '-1vw' },
-          icon: { width: '120px', height: '120px' },
+          container: { bottom: '2vh', left: '2vw' },
+          icon: { width: '100px', height: '100px' },
         };
       case 'small-tablet':
         // iPad Mini: medium size, adjusted position
         return {
-          container: { bottom: '2vh', left: '1vw' },
-          icon: { width: '170px', height: '170px' },
+          container: { bottom: '2vh', left: '2vw' },
+          icon: { width: '150px', height: '150px' },
         };
       case 'tablet':
-        // iPad Pro: current settings
+        // iPad Pro: larger icons
         return {
-          container: { bottom: '5vh', left: '-2vw' },
-          icon: { width: 'clamp(160px, 38vmin, 280px)', height: 'clamp(160px, 38vmin, 280px)' },
+          container: { bottom: '5vh', left: '2vw' },
+          icon: { width: 'clamp(140px, 30vmin, 220px)', height: 'clamp(140px, 30vmin, 220px)' },
         };
       default:
-        // iPhone 12 Pro: current settings
+        // iPhone 12 Pro, iPhone 16: standard phone size
         return {
-          container: { bottom: '5vh', left: '-2vw' },
-          icon: { width: 'clamp(160px, 38vmin, 280px)', height: 'clamp(160px, 38vmin, 280px)' },
+          container: { bottom: '2vh', left: '2vw' },
+          icon: { width: 'clamp(100px, 28vmin, 160px)', height: 'clamp(100px, 28vmin, 160px)' },
         };
     }
   };
@@ -80,7 +81,7 @@ export function GrokStats({ darkMode, iconUrl }: GrokStatsProps) {
 
   return (
     <div
-      className={`fixed z-0 flex items-center gap-[1vw] ${
+      className={`fixed z-0 flex flex-col items-center ${
         darkMode ? 'text-white' : 'text-gray-900'
       }`}
       style={styles.container}
@@ -107,9 +108,9 @@ export function GrokStats({ darkMode, iconUrl }: GrokStatsProps) {
         </div>
       )}
 
-      {/* Stats - only show when there's data */}
+      {/* Stats - below icon, only show when there's data */}
       {hasStats && (
-        <div className="flex flex-col">
+        <div className="flex flex-col items-center mt-1">
           <div className="flex items-center gap-1">
             <span
               className={`font-bold ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}

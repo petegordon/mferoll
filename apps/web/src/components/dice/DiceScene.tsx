@@ -22,14 +22,16 @@ function DiceGroup({ isRolling, targetFaces, onSettled, darkMode }: {
 
   // Calculate offset based on viewport aspect ratio
   // Higher Z = dice appear lower on screen (away from camera looking down)
+  // Lower/negative Z = dice appear higher on screen
   const aspectRatio = viewport.width / viewport.height;
   let zOffset = 0.9;
   if (aspectRatio < 0.55) {
-    // Very portrait phones (iPhone 12 Pro at 0.46)
-    zOffset = 1.0;
+    // Very portrait phones (iPhone 12 Pro, iPhone 16 with toolbars at ~0.46)
+    // Move dice UP significantly to avoid overlap with bottom UI
+    zOffset = -0.5;
   } else if (aspectRatio < 0.65) {
     // Portrait phones (iPhone SE at 0.56)
-    zOffset = 1.2;
+    zOffset = 0.2;
   } else if (aspectRatio < 0.85) {
     // Portrait tablets (iPad Pro at 0.75) - slight push down
     zOffset = 1.8;
