@@ -17,6 +17,7 @@ import {
   ERC20_ABI,
   CHAIN_ID,
   TOKEN_ADDRESSES_BY_CHAIN,
+  POOL_ADDRESSES_BY_CHAIN,
   SEVEN_ELEVEN_ADDRESS_BY_CHAIN,
   getSevenElevenAddress,
   SEVEN_ELEVEN_CONSTANTS,
@@ -35,6 +36,7 @@ export interface SupportedToken {
   icon: string;
   isDepositToken: boolean;  // V2: Whether this can be deposited
   isPayoutToken: boolean;   // V2: Whether this is a payout token
+  poolAddress?: `0x${string}` | null;  // Uniswap V3 pool for payout tokens
 }
 
 // Deposit tokens (USDC only in V2 - simpler UX)
@@ -60,6 +62,7 @@ const MAINNET_PAYOUT_TOKENS: SupportedToken[] = [
     icon: 'https://coin-images.coingecko.com/coins/images/36550/small/mfercoin-logo.png',
     isDepositToken: false,
     isPayoutToken: true,
+    poolAddress: POOL_ADDRESSES_BY_CHAIN[CHAIN_ID.BASE_MAINNET].MFERCOIN_WETH,
   },
   {
     address: TOKEN_ADDRESSES_BY_CHAIN[CHAIN_ID.BASE_MAINNET].BANKR,
@@ -69,6 +72,7 @@ const MAINNET_PAYOUT_TOKENS: SupportedToken[] = [
     icon: getTokenIconUrl(TOKEN_ADDRESSES_BY_CHAIN[CHAIN_ID.BASE_MAINNET].BANKR),
     isDepositToken: false,
     isPayoutToken: true,
+    poolAddress: POOL_ADDRESSES_BY_CHAIN[CHAIN_ID.BASE_MAINNET].BANKR_WETH,
   },
   {
     address: TOKEN_ADDRESSES_BY_CHAIN[CHAIN_ID.BASE_MAINNET].DRB,
@@ -78,6 +82,7 @@ const MAINNET_PAYOUT_TOKENS: SupportedToken[] = [
     icon: 'https://coin-images.coingecko.com/coins/images/54784/small/1000143570.jpg',
     isDepositToken: false,
     isPayoutToken: true,
+    poolAddress: POOL_ADDRESSES_BY_CHAIN[CHAIN_ID.BASE_MAINNET].DRB_WETH,
   },
 ];
 
@@ -104,6 +109,7 @@ const TESTNET_PAYOUT_TOKENS: SupportedToken[] = [
     icon: 'https://coin-images.coingecko.com/coins/images/36550/small/mfercoin-logo.png',
     isDepositToken: false,
     isPayoutToken: true,
+    poolAddress: null, // Testnet uses mock pricing
   },
   {
     address: TOKEN_ADDRESSES_BY_CHAIN[CHAIN_ID.BASE_SEPOLIA].BANKR,
@@ -113,6 +119,7 @@ const TESTNET_PAYOUT_TOKENS: SupportedToken[] = [
     icon: getTokenIconUrl(TOKEN_ADDRESSES_BY_CHAIN[CHAIN_ID.BASE_MAINNET].BANKR),
     isDepositToken: false,
     isPayoutToken: true,
+    poolAddress: null, // Testnet uses mock pricing
   },
   {
     address: TOKEN_ADDRESSES_BY_CHAIN[CHAIN_ID.BASE_SEPOLIA].DRB,
@@ -122,6 +129,7 @@ const TESTNET_PAYOUT_TOKENS: SupportedToken[] = [
     icon: 'https://coin-images.coingecko.com/coins/images/54784/small/1000143570.jpg',
     isDepositToken: false,
     isPayoutToken: true,
+    poolAddress: null, // Testnet uses mock pricing
   },
 ];
 
@@ -823,4 +831,105 @@ export function parseTokenAmount(amount: string, decimals: number): bigint {
   } catch {
     return BigInt(0);
   }
+}
+
+// Token price info type
+export interface TokenPriceInfo {
+  token: SupportedToken;
+  priceUsdCents: bigint | undefined;
+  priceUsd: string;
+  isLoading: boolean;
+}
+
+// Hook to get token prices in USD
+export function useTokenPrices(): {
+  prices: Record<string, TokenPriceInfo>;
+  isLoading: boolean;
+} {
+  const chainId = useChainId();
+  const payoutTokens = useMemo(() => getPayoutTokensForChain(chainId), [chainId]);
+  const contractAddress = useMemo(() => getSevenElevenAddress(chainId), [chainId]);
+
+  // Read price for 1 token (1e18 for 18 decimal tokens)
+  const oneToken = parseUnits('1', 18);
+
+  // Fetch price for MFER
+  const { data: mferPrice, isLoading: mferLoading } = useReadContract({
+    address: contractAddress,
+    abi: SEVEN_ELEVEN_ABI,
+    functionName: 'getTokenValueInCents',
+    args: [payoutTokens[0]?.address, oneToken],
+    query: {
+      enabled: contractAddress !== '0x0000000000000000000000000000000000000000' && payoutTokens.length > 0,
+    },
+  });
+
+  // Fetch price for BNKR
+  const { data: bnkrPrice, isLoading: bnkrLoading } = useReadContract({
+    address: contractAddress,
+    abi: SEVEN_ELEVEN_ABI,
+    functionName: 'getTokenValueInCents',
+    args: [payoutTokens[1]?.address, oneToken],
+    query: {
+      enabled: contractAddress !== '0x0000000000000000000000000000000000000000' && payoutTokens.length > 1,
+    },
+  });
+
+  // Fetch price for DRB
+  const { data: drbPrice, isLoading: drbLoading } = useReadContract({
+    address: contractAddress,
+    abi: SEVEN_ELEVEN_ABI,
+    functionName: 'getTokenValueInCents',
+    args: [payoutTokens[2]?.address, oneToken],
+    query: {
+      enabled: contractAddress !== '0x0000000000000000000000000000000000000000' && payoutTokens.length > 2,
+    },
+  });
+
+  const formatPriceUsd = useCallback((cents: bigint | undefined): string => {
+    if (cents === undefined) return '—';
+    const usd = Number(cents) / 100;
+    if (usd >= 0.01) return `$${usd.toFixed(2)}`;
+    if (usd >= 0.0001) return `$${usd.toFixed(4)}`;
+    if (usd >= 0.000001) return `$${usd.toFixed(6)}`;
+    return `$${usd.toFixed(8)}`;
+  }, []);
+
+  const prices = useMemo(() => {
+    const result: Record<string, TokenPriceInfo> = {};
+
+    if (payoutTokens[0]) {
+      result[payoutTokens[0].symbol] = {
+        token: payoutTokens[0],
+        priceUsdCents: mferPrice as bigint | undefined,
+        priceUsd: formatPriceUsd(mferPrice as bigint | undefined),
+        isLoading: mferLoading,
+      };
+    }
+
+    if (payoutTokens[1]) {
+      result[payoutTokens[1].symbol] = {
+        token: payoutTokens[1],
+        priceUsdCents: bnkrPrice as bigint | undefined,
+        priceUsd: formatPriceUsd(bnkrPrice as bigint | undefined),
+        isLoading: bnkrLoading,
+      };
+    }
+
+    if (payoutTokens[2]) {
+      result[payoutTokens[2].symbol] = {
+        token: payoutTokens[2],
+        priceUsdCents: drbPrice as bigint | undefined,
+        priceUsd: formatPriceUsd(drbPrice as bigint | undefined),
+        isLoading: drbLoading,
+      };
+    }
+
+    return result;
+  }, [payoutTokens, mferPrice, bnkrPrice, drbPrice, mferLoading, bnkrLoading, drbLoading, formatPriceUsd]);
+
+  return {
+    prices,
+    isLoading: mferLoading || bnkrLoading || drbLoading,
+  };
 }

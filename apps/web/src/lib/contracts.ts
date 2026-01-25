@@ -503,6 +503,31 @@ export const SEVEN_ELEVEN_ABI = [
     name: 'RollerRevoked',
     type: 'event',
   },
+  // Price oracle functions
+  {
+    inputs: [],
+    name: 'getEthUsdPrice',
+    outputs: [{ name: 'price', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [{ name: 'token', type: 'address' }],
+    name: 'getTokenEthPrice',
+    outputs: [{ name: 'priceX96', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [
+      { name: 'token', type: 'address' },
+      { name: 'amount', type: 'uint256' },
+    ],
+    name: 'getTokenValueInCents',
+    outputs: [{ name: 'cents', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
 ] as const;
 
 // Token addresses by network
@@ -527,9 +552,24 @@ export const TOKEN_ADDRESSES_BY_CHAIN = {
   },
 } as const;
 
+// Uniswap V3 pool addresses for meme tokens (used for TWAP pricing)
+export const POOL_ADDRESSES_BY_CHAIN = {
+  [CHAIN_ID.BASE_MAINNET]: {
+    MFERCOIN_WETH: '0x7EC18ABf80E865c6799069df91073335935C4185' as `0x${string}`,
+    DRB_WETH: '0x5116773e18A9C7bB03EBB961b38678E45E238923' as `0x${string}`,
+    BANKR_WETH: '0xAEC085E5A5CE8d96A7bDd3eB3A62445d4f6CE703' as `0x${string}`,
+  },
+  [CHAIN_ID.BASE_SEPOLIA]: {
+    // Testnet uses mock tokens with fixed pricing, no real pools
+    MFERCOIN_WETH: null,
+    DRB_WETH: null,
+    BANKR_WETH: null,
+  },
+} as const;
+
 // Grok wallet addresses
 export const GROK_WALLET_BY_CHAIN = {
-  [CHAIN_ID.BASE_MAINNET]: '0xb1058c959987e3513600eb5b4fd82aeee2a0e4f9' as `0x${string}`,
+  [CHAIN_ID.BASE_MAINNET]: '0xB1058c959987E3513600EB5b4fD82Aeee2a0E4F9' as `0x${string}`,
   [CHAIN_ID.BASE_SEPOLIA]: '0xB1058c959987E3513600EB5b4fD82Aeee2a0E4F9' as `0x${string}`, // Using drb.eth for testnet
 } as const;
 

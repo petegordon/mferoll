@@ -7,6 +7,7 @@ import {
   useSevenEleven,
   useDepositTokens,
   usePayoutTokens,
+  useTokenPrices,
   parseTokenAmount,
   type SupportedToken,
 } from '@/hooks/useSevenEleven';
@@ -60,12 +61,14 @@ export function SevenElevenGame({
   const { isConnected } = useAccount();
   const depositTokens = useDepositTokens();
   const payoutTokens = usePayoutTokens();
+  const { prices: tokenPrices } = useTokenPrices();
   const [selectedToken, setSelectedToken] = useState<SupportedToken | null>(null);
   const [showDepositModal, setShowDepositModal] = useState(false);
   const [depositAmount, setDepositAmount] = useState('');
   const [showStats, setShowStats] = useState(false);
   const [showWinnings, setShowWinnings] = useState(false);
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
+  const [selectedPayoutToken, setSelectedPayoutToken] = useState<SupportedToken | null>(null);
 
   // Use first deposit token as default
   const currentToken = selectedToken && depositTokens.find(t => t.address === selectedToken.address)
@@ -314,8 +317,13 @@ export function SevenElevenGame({
                 const amount = token.symbol.includes('MFER') ? memeWinnings.mfer :
                               token.symbol.includes('BNKR') ? memeWinnings.bnkr :
                               memeWinnings.drb;
+                const priceInfo = tokenPrices[token.symbol];
                 return (
-                  <div key={token.symbol} className="text-center">
+                  <div
+                    key={token.symbol}
+                    className="text-center cursor-pointer"
+                    onClick={() => setSelectedPayoutToken(token)}
+                  >
                     <img src={token.icon} alt={token.symbol} className="w-6 h-6 rounded-full mx-auto mb-1" />
                     <div className={`text-xs font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>
                       {formatMemeAmount(amount)}
@@ -323,6 +331,11 @@ export function SevenElevenGame({
                     <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                       {token.symbol}
                     </div>
+                    {priceInfo && (
+                      <div className={`text-xs ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
+                        {priceInfo.priceUsd}
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -482,20 +495,21 @@ export function SevenElevenGame({
                   const amount = token.symbol.includes('MFER') ? memeWinnings.mfer :
                                 token.symbol.includes('BNKR') ? memeWinnings.bnkr :
                                 memeWinnings.drb;
+                  const priceInfo = tokenPrices[token.symbol];
                   return (
                     <div
                       key={token.symbol}
                       className="text-center relative group cursor-pointer"
-                      onClick={() => handleCopyAddress(token.address, token.symbol)}
+                      onClick={() => setSelectedPayoutToken(token)}
                     >
                       <div className="relative inline-block">
                         <img src={token.icon} alt={token.symbol} className="w-6 h-6 rounded-full mx-auto mb-1" />
-                        {/* Copy overlay on hover */}
+                        {/* Info overlay on hover */}
                         <div className={`absolute inset-0 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity ${
                           darkMode ? 'bg-gray-900/80' : 'bg-white/80'
                         }`}>
                           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                           </svg>
                         </div>
                       </div>
@@ -503,8 +517,13 @@ export function SevenElevenGame({
                         {formatMemeAmount(amount)}
                       </div>
                       <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                        {copiedToken === token.symbol ? 'Copied!' : token.symbol}
+                        {token.symbol}
                       </div>
+                      {priceInfo && (
+                        <div className={`text-xs ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
+                          {priceInfo.priceUsd}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -524,6 +543,102 @@ export function SevenElevenGame({
         <div>Winnings: MFER + BNKR + DRB to wallet</div>
         <div>${SEVEN_ELEVEN_CONSTANTS.LOSS_SKIM_USD.toFixed(2)} DRB to Grok on loss</div>
       </div>
+
+      {/* Token Info Modal */}
+      {selectedPayoutToken && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setSelectedPayoutToken(null)}>
+          <div
+            className={`rounded-2xl p-5 max-w-sm w-full ${
+              darkMode ? 'bg-gray-800' : 'bg-white'
+            }`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3 mb-4">
+              <img src={selectedPayoutToken.icon} alt={selectedPayoutToken.symbol} className="w-10 h-10 rounded-full" />
+              <div>
+                <h3 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                  {selectedPayoutToken.symbol}
+                </h3>
+                <div className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                  {selectedPayoutToken.name}
+                </div>
+              </div>
+              {tokenPrices[selectedPayoutToken.symbol] && (
+                <div className={`ml-auto text-lg font-bold ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
+                  {tokenPrices[selectedPayoutToken.symbol].priceUsd}
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-3">
+              {/* Token Address */}
+              <div>
+                <div className={`text-xs mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                  Token Address
+                </div>
+                <button
+                  onClick={() => handleCopyAddress(selectedPayoutToken.address, 'token')}
+                  className={`w-full text-left px-3 py-2 rounded-lg text-xs font-mono break-all flex items-center justify-between gap-2 ${
+                    darkMode ? 'bg-gray-700 hover:bg-gray-600 text-gray-300' : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+                  }`}
+                >
+                  <span>{selectedPayoutToken.address}</span>
+                  <span className="flex-shrink-0">
+                    {copiedToken === 'token' ? (
+                      <svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                    ) : (
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                      </svg>
+                    )}
+                  </span>
+                </button>
+              </div>
+
+              {/* Pool Address */}
+              {selectedPayoutToken.poolAddress && (
+                <div>
+                  <div className={`text-xs mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                    Uniswap V3 Pool
+                  </div>
+                  <button
+                    onClick={() => handleCopyAddress(selectedPayoutToken.poolAddress!, 'pool')}
+                    className={`w-full text-left px-3 py-2 rounded-lg text-xs font-mono break-all flex items-center justify-between gap-2 ${
+                      darkMode ? 'bg-gray-700 hover:bg-gray-600 text-gray-300' : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+                    }`}
+                  >
+                    <span>{selectedPayoutToken.poolAddress}</span>
+                    <span className="flex-shrink-0">
+                      {copiedToken === 'pool' ? (
+                        <svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                      ) : (
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                        </svg>
+                      )}
+                    </span>
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <button
+              onClick={() => setSelectedPayoutToken(null)}
+              className={`w-full mt-4 py-2 px-4 rounded-lg font-medium ${
+                darkMode
+                  ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Deposit Modal */}
       {showDepositModal && (
