@@ -50,14 +50,14 @@ export function DicePair({ isRolling, targetFaces, onSettled, darkMode = false }
   return (
     <group>
       <D6
-        position={[-1.0, 0, 0]}
+        position={[-0.95, 0, 0]}
         isRolling={isRolling}
         targetFace={targetFaces?.die1}
         onSettled={handleDie1Settled}
         darkMode={darkMode}
       />
       <D6
-        position={[1.0, 0, 0]}
+        position={[0.95, 0, 0]}
         isRolling={isRolling}
         targetFace={targetFaces?.die2}
         onSettled={handleDie2Settled}
