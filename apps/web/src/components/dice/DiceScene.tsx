@@ -27,11 +27,11 @@ function DiceGroup({ isRolling, targetFaces, onSettled, darkMode }: {
   let zOffset = 0.9;
   if (aspectRatio < 0.55) {
     // Very portrait phones (iPhone 12 Pro, iPhone 16 with toolbars at ~0.46)
-    // Move dice UP significantly to avoid overlap with bottom UI
-    zOffset = -0.5;
+    // Move dice UP significantly (~80% of dice height) to avoid overlap with bottom UI
+    zOffset = -2.5;
   } else if (aspectRatio < 0.65) {
     // Portrait phones (iPhone SE at 0.56)
-    zOffset = 0.2;
+    zOffset = -1.5;
   } else if (aspectRatio < 0.85) {
     // Portrait tablets (iPad Pro at 0.75) - slight push down
     zOffset = 1.8;
