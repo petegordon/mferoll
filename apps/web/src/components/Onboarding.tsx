@@ -80,7 +80,7 @@ export function Onboarding({
       image: '/logo-transparent.png',
       title: 'Welcome to mferROLL!',
       content: (
-        <div className="space-y-6 py-4">
+        <div className="space-y-8 py-6">
           <p className="text-center text-lg">
             The funnest way to swap USDC for MFER, BNKR, and DRB all at once!
           </p>
@@ -164,17 +164,11 @@ export function Onboarding({
     },
     // Step 5: Grok AI - with large coins image (final step)
     {
+      image: '/grokai_mfer_coins.png',
       title: 'Grok Gets His Beak Wet!',
       content: (
-        <div className="space-y-4">
-          <div className="flex justify-center">
-            <img
-              src="/grokai_mfer_coins.png"
-              alt="Grok AI"
-              className="w-56 h-56 object-contain"
-            />
-          </div>
-          <p className="text-center">
+        <div className="space-y-6 py-6">
+          <p className="text-center text-lg">
             Grok gets his beak wet with mfer on every losing roll!
           </p>
           <div className="flex items-center justify-center gap-2">
@@ -260,7 +254,9 @@ export function Onboarding({
                     ? { width: 160, height: 160, borderRadius: 12 }
                     : currentContent.image.includes('number_of_rolls')
                       ? { width: 280, height: 140, borderRadius: 8 }
-                      : { width: 80, height: 80, borderRadius: '50%' }
+                      : currentContent.image.includes('grokai')
+                        ? { width: 160, height: 160 }
+                        : { width: 80, height: 80, borderRadius: '50%' }
                 }
                 className="object-contain"
               />
@@ -280,20 +276,22 @@ export function Onboarding({
 
         {/* Footer */}
         <div className={`p-4 pt-0 space-y-4 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
-          {/* Don't show again checkbox - only on last step */}
-          {isLastStep && (
-            <label className="flex items-center justify-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={dontShowAgain}
-                onChange={(e) => setDontShowAgain(e.target.checked)}
-                className="w-4 h-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
-              />
-              <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                Don't show me this again
-              </span>
-            </label>
-          )}
+          {/* Don't show again checkbox - reserve space on all steps for consistent height */}
+          <div className="h-6 flex items-center justify-center">
+            {isLastStep && (
+              <label className="flex items-center justify-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={dontShowAgain}
+                  onChange={(e) => setDontShowAgain(e.target.checked)}
+                  className="w-4 h-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                />
+                <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                  Don't show me this again
+                </span>
+              </label>
+            )}
+          </div>
 
           {/* Navigation row */}
           <div className="flex items-center justify-between">
