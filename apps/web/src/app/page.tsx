@@ -346,9 +346,19 @@ export default function Home() {
     // If connected, check balance and call contract
     if (isConnected) {
       // Use displayed balance for check (manualDisplayBalance if set, otherwise hook's balance)
+      // Also check hook's balance as a safety measure to prevent wallet prompts when actually insufficient
       const effectiveBalance = manualDisplayBalance !== null ? manualDisplayBalance : balance;
+      const actualBalance = balance; // Hook's balance (may be slightly stale but is the contract value)
+
+      // Check both displayed balance AND actual balance - if either is insufficient, don't roll
+      // This prevents wallet prompts when actual balance is insufficient even if display is wrong
       if (!effectiveBalance || !betAmount || effectiveBalance < betAmount) {
-        debugLog.warn('Insufficient balance');
+        debugLog.warn('Insufficient balance (display)');
+        setMenuOpen(true);
+        return;
+      }
+      if (!actualBalance || actualBalance < betAmount) {
+        debugLog.warn('Insufficient balance (actual)');
         setMenuOpen(true);
         return;
       }
@@ -361,14 +371,9 @@ export default function Home() {
           await rollWithSessionKey();
         } catch (err) {
           debugLog.error(`Session key roll failed: ${err}`);
-          // Fall back to regular roll
-          try {
-            await contractRoll();
-            debugLog.info('Fallback to contract roll');
-          } catch (err2) {
-            debugLog.error(`Contract roll also failed: ${err2}`);
-            return;
-          }
+          // Don't fall back to wallet roll - this would prompt the user unexpectedly
+          // Just log the error and return
+          return;
         }
       } else {
         // Regular roll with wallet signature
@@ -447,7 +452,7 @@ export default function Home() {
   }, [targetFaces, isConnected, diceResult]);
 
   // Listen for shake (also blocked during win animation lockout)
-  useShakeListener(shakeEnabled && hasStarted && !isRolling && !winAnimationLockout, handleRoll, isRolling);
+  useShakeListener(shakeEnabled && hasStarted && !isRolling && !winAnimationLockout, handleRoll);
 
   // Handler for "Throw Again" button - directly starts roll
   const handleThrowAgain = useCallback(async () => {
@@ -458,9 +463,19 @@ export default function Home() {
     // If connected, check balance and call contract
     if (isConnected) {
       // Use displayed balance for check (manualDisplayBalance if set, otherwise hook's balance)
+      // Also check hook's balance as a safety measure to prevent wallet prompts when actually insufficient
       const effectiveBalance = manualDisplayBalance !== null ? manualDisplayBalance : balance;
+      const actualBalance = balance; // Hook's balance (may be slightly stale but is the contract value)
+
+      // Check both displayed balance AND actual balance - if either is insufficient, don't roll
+      // This prevents wallet prompts when actual balance is insufficient even if display is wrong
       if (!effectiveBalance || !betAmount || effectiveBalance < betAmount) {
-        debugLog.warn('Insufficient balance');
+        debugLog.warn('Insufficient balance (display)');
+        setMenuOpen(true);
+        return;
+      }
+      if (!actualBalance || actualBalance < betAmount) {
+        debugLog.warn('Insufficient balance (actual)');
         setMenuOpen(true);
         return;
       }
@@ -473,14 +488,9 @@ export default function Home() {
           await rollWithSessionKey();
         } catch (err) {
           debugLog.error(`Session key roll failed: ${err}`);
-          // Fall back to regular roll
-          try {
-            await contractRoll();
-            debugLog.info('Fallback to contract roll');
-          } catch (err2) {
-            debugLog.error(`Contract roll also failed: ${err2}`);
-            return;
-          }
+          // Don't fall back to wallet roll - this would prompt the user unexpectedly
+          // Just log the error and return
+          return;
         }
       } else {
         // Regular roll with wallet signature
@@ -836,7 +846,7 @@ export default function Home() {
 }
 
 // Custom hook for shake detection - uses a lock to prevent multiple triggers
-function useShakeListener(enabled: boolean, onShake: () => void, isRolling: boolean) {
+function useShakeListener(enabled: boolean, onShake: () => void) {
   const lockedUntilRef = useRef(0);
   const lastAccRef = useRef<{ x: number; y: number; z: number } | null>(null);
   const onShakeRef = useRef(onShake);
