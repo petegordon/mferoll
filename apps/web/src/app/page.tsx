@@ -345,7 +345,9 @@ export default function Home() {
 
     // If connected, check balance and call contract
     if (isConnected) {
-      if (!balance || !betAmount || balance < betAmount) {
+      // Use displayed balance for check (manualDisplayBalance if set, otherwise hook's balance)
+      const effectiveBalance = manualDisplayBalance !== null ? manualDisplayBalance : balance;
+      if (!effectiveBalance || !betAmount || effectiveBalance < betAmount) {
         debugLog.warn('Insufficient balance');
         setMenuOpen(true);
         return;
@@ -455,7 +457,9 @@ export default function Home() {
 
     // If connected, check balance and call contract
     if (isConnected) {
-      if (!balance || !betAmount || balance < betAmount) {
+      // Use displayed balance for check (manualDisplayBalance if set, otherwise hook's balance)
+      const effectiveBalance = manualDisplayBalance !== null ? manualDisplayBalance : balance;
+      if (!effectiveBalance || !betAmount || effectiveBalance < betAmount) {
         debugLog.warn('Insufficient balance');
         setMenuOpen(true);
         return;
