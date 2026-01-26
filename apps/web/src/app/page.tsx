@@ -84,6 +84,7 @@ export default function Home() {
   const [winTrigger, setWinTrigger] = useState(0);
   const [lossTrigger, setLossTrigger] = useState(0);
   const [gameBalanceAnimating, setGameBalanceAnimating] = useState(false);
+  const [winAnimationLockout, setWinAnimationLockout] = useState(false);
   // Optimistic update state
   const [optimisticPayouts, setOptimisticPayouts] = useState<{ mfer: bigint; bnkr: bigint; drb: bigint } | null>(null);
   const [optimisticSkim, setOptimisticSkim] = useState<bigint | null>(null);
@@ -347,7 +348,7 @@ export default function Home() {
 
   // Handle roll
   const handleRoll = useCallback(async () => {
-    if (isRollingRef.current || isRolling || isContractRolling || isRollingWithSessionKey) {
+    if (isRollingRef.current || isRolling || isContractRolling || isRollingWithSessionKey || winAnimationLockout) {
       return;
     }
 
@@ -412,7 +413,7 @@ export default function Home() {
       setIsRolling(true);
       setDiceResult(null);
     }
-  }, [isRolling, isContractRolling, isRollingWithSessionKey, isConnected, balance, betAmount, contractRoll, hasSessionKey, isSessionKeyAuthorized, rollWithSessionKey]);
+  }, [isRolling, isContractRolling, isRollingWithSessionKey, isConnected, balance, betAmount, contractRoll, hasSessionKey, isSessionKeyAuthorized, rollWithSessionKey, winAnimationLockout]);
 
   const handleDiceSettled = useCallback(() => {
     console.log('Dice animation settled with target faces:', targetFaces);
@@ -427,24 +428,30 @@ export default function Home() {
     if (isConnected && diceResult && diceResult.won !== undefined) {
       if (diceResult.won) {
         // WIN: Animate Game Balance first, then meme coins
+        // Lock out rolling during Game Balance + first 2 meme coin animations
+        setWinAnimationLockout(true);
         setGameBalanceAnimating(true);
         // After Game Balance animation (800ms), trigger meme coin animations
         setTimeout(() => {
           setGameBalanceAnimating(false);
           setWinTrigger(prev => prev + 1);
         }, 800);
+        // Clear lockout after Game Balance (800ms) + MFER (1100ms) + DRB (1100ms) = 3000ms
+        setTimeout(() => {
+          setWinAnimationLockout(false);
+        }, 3000);
       } else {
         setLossTrigger(prev => prev + 1);
       }
     }
   }, [targetFaces, isConnected, diceResult]);
 
-  // Listen for shake
-  useShakeListener(shakeEnabled && hasStarted && !isRolling, handleRoll, isRolling);
+  // Listen for shake (also blocked during win animation lockout)
+  useShakeListener(shakeEnabled && hasStarted && !isRolling && !winAnimationLockout, handleRoll, isRolling);
 
   // Handler for "Throw Again" button - directly starts roll
   const handleThrowAgain = useCallback(async () => {
-    if (isRollingRef.current || isRolling || isContractRolling || isRollingWithSessionKey) {
+    if (isRollingRef.current || isRolling || isContractRolling || isRollingWithSessionKey || winAnimationLockout) {
       return;
     }
 
@@ -509,7 +516,7 @@ export default function Home() {
       setIsRolling(true);
       setDiceResult(null);
     }
-  }, [isRolling, isContractRolling, isRollingWithSessionKey, isConnected, balance, betAmount, contractRoll, hasSessionKey, isSessionKeyAuthorized, rollWithSessionKey]);
+  }, [isRolling, isContractRolling, isRollingWithSessionKey, isConnected, balance, betAmount, contractRoll, hasSessionKey, isSessionKeyAuthorized, rollWithSessionKey, winAnimationLockout]);
 
   return (
     <main className="h-[100dvh] flex flex-col overflow-hidden relative">
