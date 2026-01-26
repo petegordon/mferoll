@@ -346,19 +346,12 @@ export default function Home() {
     // If connected, check balance and call contract
     if (isConnected) {
       // Use displayed balance for check (manualDisplayBalance if set, otherwise hook's balance)
-      // Also check hook's balance as a safety measure to prevent wallet prompts when actually insufficient
+      // When manualDisplayBalance is set, it came from a RollSettled event and is authoritative
+      // When it's null, fall back to hook's balance (which may be slightly stale from polling)
       const effectiveBalance = manualDisplayBalance !== null ? manualDisplayBalance : balance;
-      const actualBalance = balance; // Hook's balance (may be slightly stale but is the contract value)
 
-      // Check both displayed balance AND actual balance - if either is insufficient, don't roll
-      // This prevents wallet prompts when actual balance is insufficient even if display is wrong
       if (!effectiveBalance || !betAmount || effectiveBalance < betAmount) {
-        debugLog.warn('Insufficient balance (display)');
-        setMenuOpen(true);
-        return;
-      }
-      if (!actualBalance || actualBalance < betAmount) {
-        debugLog.warn('Insufficient balance (actual)');
+        debugLog.warn(`Insufficient balance: ${effectiveBalance?.toString() || 'undefined'} < ${betAmount?.toString() || 'undefined'}`);
         setMenuOpen(true);
         return;
       }
@@ -463,19 +456,12 @@ export default function Home() {
     // If connected, check balance and call contract
     if (isConnected) {
       // Use displayed balance for check (manualDisplayBalance if set, otherwise hook's balance)
-      // Also check hook's balance as a safety measure to prevent wallet prompts when actually insufficient
+      // When manualDisplayBalance is set, it came from a RollSettled event and is authoritative
+      // When it's null, fall back to hook's balance (which may be slightly stale from polling)
       const effectiveBalance = manualDisplayBalance !== null ? manualDisplayBalance : balance;
-      const actualBalance = balance; // Hook's balance (may be slightly stale but is the contract value)
 
-      // Check both displayed balance AND actual balance - if either is insufficient, don't roll
-      // This prevents wallet prompts when actual balance is insufficient even if display is wrong
       if (!effectiveBalance || !betAmount || effectiveBalance < betAmount) {
-        debugLog.warn('Insufficient balance (display)');
-        setMenuOpen(true);
-        return;
-      }
-      if (!actualBalance || actualBalance < betAmount) {
-        debugLog.warn('Insufficient balance (actual)');
+        debugLog.warn(`Insufficient balance: ${effectiveBalance?.toString() || 'undefined'} < ${betAmount?.toString() || 'undefined'}`);
         setMenuOpen(true);
         return;
       }
