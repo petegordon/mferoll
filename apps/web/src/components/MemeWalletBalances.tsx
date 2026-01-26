@@ -164,17 +164,23 @@ export function MemeWalletBalances({
   }, [animationQueue, currentlyAnimating]);
 
   const handleAnimationComplete = useCallback(() => {
-    // Delay before starting next animation
+    // Consistent 300ms delay before starting next animation
     setTimeout(() => {
-      setCurrentlyAnimating((prev) => {
-        // If this was the last animation in the queue, clear optimistic state
-        if (animationQueue.length === 0 && onOptimisticPayoutsCleared) {
-          onOptimisticPayoutsCleared();
-        }
-        return null;
-      });
+      setCurrentlyAnimating(null);
     }, 300);
-  }, [animationQueue.length, onOptimisticPayoutsCleared]);
+  }, []);
+
+  // Clear optimistic state when all animations are done
+  useEffect(() => {
+    // Only clear if we have optimistic payouts and animations have finished
+    if (optimisticPayouts && animationQueue.length === 0 && currentlyAnimating === null && onOptimisticPayoutsCleared) {
+      // Small delay to ensure final animation has visually completed
+      const timer = setTimeout(() => {
+        onOptimisticPayoutsCleared();
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [animationQueue.length, currentlyAnimating, onOptimisticPayoutsCleared, optimisticPayouts]);
 
   // Only show when connected
   if (!isConnected) return null;
