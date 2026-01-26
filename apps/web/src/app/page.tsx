@@ -85,11 +85,12 @@ export default function Home() {
   const [lossTrigger, setLossTrigger] = useState(0);
   const [gameBalanceAnimating, setGameBalanceAnimating] = useState(false);
   const [winAnimationLockout, setWinAnimationLockout] = useState(false);
-  // Optimistic update state
+  // Optimistic update state for meme coins and grok
   const [optimisticPayouts, setOptimisticPayouts] = useState<{ mfer: bigint; bnkr: bigint; drb: bigint } | null>(null);
   const [optimisticSkim, setOptimisticSkim] = useState<bigint | null>(null);
-  const [optimisticBalance, setOptimisticBalance] = useState<bigint | null>(null);
-  const [balanceBeforeRoll, setBalanceBeforeRoll] = useState<bigint | null>(null);
+  // Manual display balance - only updated on: roll start, roll settle (win), deposit, withdraw
+  // When null, uses the hook's balance. When set, shows this value.
+  const [manualDisplayBalance, setManualDisplayBalance] = useState<bigint | null>(null);
   const isRollingRef = useRef(false);
   const rollStartTimeRef = useRef(0);
 
@@ -148,26 +149,14 @@ export default function Home() {
     return playerStats.firstPlayTime > BigInt(0);
   }, [playerStats]);
 
-  // Computed display balance - uses optimistic when available, falls back to real balance
+  // Display balance - uses manual value when set, otherwise hook's balance
+  // Only updates on: roll start (deduct), roll settle win (from event), deposit, withdraw
   const displayBalance = useMemo(() => {
-    if (optimisticBalance !== null) {
-      // Format optimistic balance (6 decimals for USDC)
-      return (Number(optimisticBalance) / 1e6).toFixed(2);
+    if (manualDisplayBalance !== null) {
+      return (Number(manualDisplayBalance) / 1e6).toFixed(2);
     }
     return Number(balanceFormatted).toFixed(2);
-  }, [optimisticBalance, balanceFormatted]);
-
-  // Clear optimistic balance when real balance has actually updated from blockchain
-  useEffect(() => {
-    if (optimisticBalance !== null && balance !== undefined && balanceBeforeRoll !== null) {
-      // Only clear optimistic balance when the real balance has changed from pre-roll
-      // This ensures we don't flash back to old balance before blockchain state updates
-      if (balance !== balanceBeforeRoll) {
-        setOptimisticBalance(null);
-        setBalanceBeforeRoll(null);
-      }
-    }
-  }, [balance, optimisticBalance, balanceBeforeRoll]);
+  }, [manualDisplayBalance, balanceFormatted]);
 
   // Onboarding state
   const { shouldShowOnboarding, dontShowAgainValue, completeOnboarding, skipOnboarding, showOnboarding } = useOnboarding(
@@ -185,8 +174,7 @@ export default function Home() {
   // Red: balance < 2 rolls
   // Critical (flashing): balance < 1 roll
   const getBalanceColor = useCallback(() => {
-    // Use optimistic balance when available for consistent coloring
-    const effectiveBalance = optimisticBalance !== null ? optimisticBalance : balance;
+    const effectiveBalance = manualDisplayBalance !== null ? manualDisplayBalance : balance;
     if (!effectiveBalance || !minDeposit || !betAmount) return 'gray';
     const halfMinDeposit = minDeposit / BigInt(2);
     const twoRolls = betAmount * BigInt(2);
@@ -196,7 +184,7 @@ export default function Home() {
     if (effectiveBalance < halfMinDeposit) return 'yellow';
     if (effectiveBalance < minDeposit) return 'gray';
     return 'green';
-  }, [balance, optimisticBalance, minDeposit, betAmount]);
+  }, [balance, manualDisplayBalance, minDeposit, betAmount]);
 
   // Check if session key is fully authorized on the contract
   const isSessionKeyAuthorized = hasValidSessionKey &&
@@ -262,9 +250,10 @@ export default function Home() {
               setOptimisticSkim(args.mferSkimmed);
             }
 
-            // Update optimistic balance from event (shows correct balance immediately)
-            if (args.playerBalance !== undefined) {
-              setOptimisticBalance(args.playerBalance);
+            // Update display balance from event on WIN only (bet credited back)
+            // On loss, keep the deducted value (no change needed)
+            if (won && args.playerBalance !== undefined) {
+              setManualDisplayBalance(args.playerBalance);
             }
 
             // Inject target faces into ongoing animation - D6 will transition from shake to throw
@@ -399,10 +388,9 @@ export default function Home() {
       setIsRolling(true);
       setDiceResult(null);
       setAwaitingBlockchainResult(true);
-      // Optimistically deduct bet immediately and track pre-roll balance
+      // Deduct bet from display balance immediately
       if (balance && betAmount) {
-        setBalanceBeforeRoll(balance);
-        setOptimisticBalance(balance - betAmount);
+        setManualDisplayBalance(balance - betAmount);
       }
     } else {
       const die1 = Math.floor(Math.random() * 6) + 1;
@@ -502,10 +490,9 @@ export default function Home() {
       setIsRolling(true);
       setDiceResult(null);
       setAwaitingBlockchainResult(true);
-      // Optimistically deduct bet immediately and track pre-roll balance
+      // Deduct bet from display balance immediately
       if (balance && betAmount) {
-        setBalanceBeforeRoll(balance);
-        setOptimisticBalance(balance - betAmount);
+        setManualDisplayBalance(balance - betAmount);
       }
     } else {
       const die1 = Math.floor(Math.random() * 6) + 1;
@@ -800,6 +787,7 @@ export default function Home() {
                     clearSessionKey,
                   }}
                   onDepositComplete={() => setMenuOpen(false)}
+                  onBalanceChange={() => setManualDisplayBalance(null)}
                 />
               </div>
             </div>

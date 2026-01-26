@@ -53,12 +53,14 @@ interface SevenElevenGameProps {
   darkMode: boolean;
   sessionKey: SessionKeyState;
   onDepositComplete?: () => void;
+  onBalanceChange?: () => void;
 }
 
 export function SevenElevenGame({
   darkMode,
   sessionKey,
   onDepositComplete,
+  onBalanceChange,
 }: SevenElevenGameProps) {
   const { isConnected } = useAccount();
   const depositTokens = useDepositTokens();
@@ -182,11 +184,13 @@ export function SevenElevenGame({
         // Balance has updated, hide the overlay
         setDepositStep('idle');
         setBalanceAtDepositStart(null);
+        // Reset display balance to sync with new balance
+        onBalanceChange?.();
         // Close the menu after successful deposit
         onDepositComplete?.();
       }
     }
-  }, [balance, depositStep, balanceAtDepositStart, onDepositComplete]);
+  }, [balance, depositStep, balanceAtDepositStart, onDepositComplete, onBalanceChange]);
 
   const handleCreateSessionKey = useCallback(async () => {
     try {
@@ -202,8 +206,10 @@ export function SevenElevenGame({
   const handleWithdrawAll = useCallback(async () => {
     if (balance && balance > BigInt(0)) {
       await withdrawAll();
+      // Reset display balance to sync with new balance (0 after withdraw)
+      onBalanceChange?.();
     }
-  }, [balance, withdrawAll]);
+  }, [balance, withdrawAll, onBalanceChange]);
 
   const handleCopyAddress = useCallback((address: string, symbol: string) => {
     navigator.clipboard.writeText(address);
