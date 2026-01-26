@@ -91,6 +91,8 @@ export default function Home() {
   // Manual display balance - only updated on: roll start, roll settle (win), deposit, withdraw
   // When null, uses the hook's balance. When set, shows this value.
   const [manualDisplayBalance, setManualDisplayBalance] = useState<bigint | null>(null);
+  // Store playerBalance from event to apply when dice settle (not when event arrives)
+  const pendingWinBalanceRef = useRef<bigint | null>(null);
   const isRollingRef = useRef(false);
   const rollStartTimeRef = useRef(0);
 
@@ -250,10 +252,10 @@ export default function Home() {
               setOptimisticSkim(args.mferSkimmed);
             }
 
-            // Update display balance from event on WIN only (bet credited back)
-            // On loss, keep the deducted value (no change needed)
+            // Store playerBalance for WIN to apply when dice settle (not now)
+            // This prevents the balance from jumping before the animation
             if (won && args.playerBalance !== undefined) {
-              setManualDisplayBalance(args.playerBalance);
+              pendingWinBalanceRef.current = args.playerBalance;
             }
 
             // Inject target faces into ongoing animation - D6 will transition from shake to throw
@@ -418,6 +420,11 @@ export default function Home() {
         // WIN: Animate Game Balance first, then meme coins
         // Lock out rolling during Game Balance + first 2 meme coin animations
         setWinAnimationLockout(true);
+        // Apply the pending win balance NOW (when animation starts)
+        if (pendingWinBalanceRef.current !== null) {
+          setManualDisplayBalance(pendingWinBalanceRef.current);
+          pendingWinBalanceRef.current = null;
+        }
         setGameBalanceAnimating(true);
         // After Game Balance animation (800ms), trigger meme coin animations
         setTimeout(() => {
