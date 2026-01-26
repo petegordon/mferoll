@@ -83,6 +83,7 @@ export default function Home() {
   const [waitingTooLong, setWaitingTooLong] = useState(false);
   const [winTrigger, setWinTrigger] = useState(0);
   const [lossTrigger, setLossTrigger] = useState(0);
+  const [gameBalanceAnimating, setGameBalanceAnimating] = useState(false);
   // Optimistic update state
   const [optimisticPayouts, setOptimisticPayouts] = useState<{ mfer: bigint; bnkr: bigint; drb: bigint } | null>(null);
   const [optimisticSkim, setOptimisticSkim] = useState<bigint | null>(null);
@@ -425,7 +426,13 @@ export default function Home() {
     // Trigger win/loss animations now that dice have settled
     if (isConnected && diceResult && diceResult.won !== undefined) {
       if (diceResult.won) {
-        setWinTrigger(prev => prev + 1);
+        // WIN: Animate Game Balance first, then meme coins
+        setGameBalanceAnimating(true);
+        // After Game Balance animation (800ms), trigger meme coin animations
+        setTimeout(() => {
+          setGameBalanceAnimating(false);
+          setWinTrigger(prev => prev + 1);
+        }, 800);
       } else {
         setLossTrigger(prev => prev + 1);
       }
@@ -565,7 +572,9 @@ export default function Home() {
           {isConnected && (
             <button
               onClick={() => setMenuOpen(!menuOpen)}
-              className={`px-3 py-2 rounded-lg transition-colors shadow-lg font-medium text-sm flex items-center gap-1.5 ${
+              className={`px-3 py-2 rounded-lg shadow-lg font-medium text-sm flex items-center gap-1.5 transition-all duration-300 ${
+                gameBalanceAnimating ? 'scale-110' : ''
+              } ${
                 (() => {
                   const color = getBalanceColor();
                   if (color === 'critical') return `${darkMode ? 'bg-red-600 text-white' : 'bg-red-500 text-white'} animate-pulse`;
@@ -576,10 +585,31 @@ export default function Home() {
                   return darkMode ? 'bg-gray-500 hover:bg-gray-400 text-white' : 'bg-gray-400 hover:bg-gray-300 text-white';
                 })()
               }`}
+              style={{
+                boxShadow: gameBalanceAnimating
+                  ? '0 0 20px #FFD700, 0 0 40px #FFA500, 0 0 60px #FFD700'
+                  : undefined,
+              }}
               aria-label="Open game menu"
             >
-              <span>{displayBalance}</span>
-              <img src={currentToken.icon} alt={currentToken.symbol} className="w-4 h-4 rounded-full" />
+              <span
+                style={{
+                  color: gameBalanceAnimating ? '#FFD700' : undefined,
+                  textShadow: gameBalanceAnimating ? '0 0 10px #FFD700' : undefined,
+                }}
+              >
+                {displayBalance}
+              </span>
+              <img
+                src={currentToken.icon}
+                alt={currentToken.symbol}
+                className={`w-4 h-4 rounded-full transition-transform duration-300 ${
+                  gameBalanceAnimating ? 'scale-125' : ''
+                }`}
+                style={{
+                  filter: gameBalanceAnimating ? 'drop-shadow(0 0 8px #FFD700)' : undefined,
+                }}
+              />
             </button>
           )}
         </div>
