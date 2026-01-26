@@ -390,9 +390,12 @@ export default function Home() {
       setIsRolling(true);
       setDiceResult(null);
       setAwaitingBlockchainResult(true);
-      // Deduct bet from display balance immediately
-      if (balance && betAmount) {
-        setManualDisplayBalance(balance - betAmount);
+      // Deduct bet from current display balance (not hook's balance which may be stale)
+      if (betAmount) {
+        const currentDisplayBalance = manualDisplayBalance !== null ? manualDisplayBalance : balance;
+        if (currentDisplayBalance) {
+          setManualDisplayBalance(currentDisplayBalance - betAmount);
+        }
       }
     } else {
       const die1 = Math.floor(Math.random() * 6) + 1;
@@ -403,7 +406,7 @@ export default function Home() {
       setIsRolling(true);
       setDiceResult(null);
     }
-  }, [isRolling, isContractRolling, isRollingWithSessionKey, isConnected, balance, betAmount, contractRoll, hasSessionKey, isSessionKeyAuthorized, rollWithSessionKey, winAnimationLockout]);
+  }, [isRolling, isContractRolling, isRollingWithSessionKey, isConnected, balance, betAmount, contractRoll, hasSessionKey, isSessionKeyAuthorized, rollWithSessionKey, winAnimationLockout, manualDisplayBalance]);
 
   const handleDiceSettled = useCallback(() => {
     console.log('Dice animation settled with target faces:', targetFaces);
@@ -497,9 +500,12 @@ export default function Home() {
       setIsRolling(true);
       setDiceResult(null);
       setAwaitingBlockchainResult(true);
-      // Deduct bet from display balance immediately
-      if (balance && betAmount) {
-        setManualDisplayBalance(balance - betAmount);
+      // Deduct bet from current display balance (not hook's balance which may be stale)
+      if (betAmount) {
+        const currentDisplayBalance = manualDisplayBalance !== null ? manualDisplayBalance : balance;
+        if (currentDisplayBalance) {
+          setManualDisplayBalance(currentDisplayBalance - betAmount);
+        }
       }
     } else {
       const die1 = Math.floor(Math.random() * 6) + 1;
@@ -510,7 +516,7 @@ export default function Home() {
       setIsRolling(true);
       setDiceResult(null);
     }
-  }, [isRolling, isContractRolling, isRollingWithSessionKey, isConnected, balance, betAmount, contractRoll, hasSessionKey, isSessionKeyAuthorized, rollWithSessionKey, winAnimationLockout]);
+  }, [isRolling, isContractRolling, isRollingWithSessionKey, isConnected, balance, betAmount, contractRoll, hasSessionKey, isSessionKeyAuthorized, rollWithSessionKey, winAnimationLockout, manualDisplayBalance]);
 
   return (
     <main className="h-[100dvh] flex flex-col overflow-hidden relative">
