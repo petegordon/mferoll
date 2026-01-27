@@ -139,6 +139,7 @@ export default function Home() {
     authorizedRoller,
     playerStats,
     error: contractError,
+    refetchBalance,
   } = useSevenEleven(currentToken, {
     // Pass session key client for gasless rolls
     sessionKeyClient: hasValidSessionKey ? sessionKeyClient : undefined,
@@ -364,8 +365,10 @@ export default function Home() {
           await rollWithSessionKey();
         } catch (err) {
           debugLog.error(`Session key roll failed: ${err}`);
+          // Reset display balance to sync with on-chain state
+          setManualDisplayBalance(null);
+          refetchBalance();
           // Don't fall back to wallet roll - this would prompt the user unexpectedly
-          // Just log the error and return
           return;
         }
       } else {
@@ -375,6 +378,9 @@ export default function Home() {
           await contractRoll();
         } catch (err) {
           debugLog.error(`Contract roll failed: ${err}`);
+          // Reset display balance to sync with on-chain state
+          setManualDisplayBalance(null);
+          refetchBalance();
           return;
         }
       }
@@ -406,7 +412,7 @@ export default function Home() {
       setIsRolling(true);
       setDiceResult(null);
     }
-  }, [isRolling, isContractRolling, isRollingWithSessionKey, isConnected, balance, betAmount, contractRoll, hasSessionKey, isSessionKeyAuthorized, rollWithSessionKey, winAnimationLockout, manualDisplayBalance]);
+  }, [isRolling, isContractRolling, isRollingWithSessionKey, isConnected, balance, betAmount, contractRoll, hasSessionKey, isSessionKeyAuthorized, rollWithSessionKey, winAnimationLockout, manualDisplayBalance, refetchBalance]);
 
   const handleDiceSettled = useCallback(() => {
     console.log('Dice animation settled with target faces:', targetFaces);
@@ -474,8 +480,10 @@ export default function Home() {
           await rollWithSessionKey();
         } catch (err) {
           debugLog.error(`Session key roll failed: ${err}`);
+          // Reset display balance to sync with on-chain state
+          setManualDisplayBalance(null);
+          refetchBalance();
           // Don't fall back to wallet roll - this would prompt the user unexpectedly
-          // Just log the error and return
           return;
         }
       } else {
@@ -485,6 +493,9 @@ export default function Home() {
           await contractRoll();
         } catch (err) {
           debugLog.error(`Contract roll failed: ${err}`);
+          // Reset display balance to sync with on-chain state
+          setManualDisplayBalance(null);
+          refetchBalance();
           return;
         }
       }
@@ -516,7 +527,7 @@ export default function Home() {
       setIsRolling(true);
       setDiceResult(null);
     }
-  }, [isRolling, isContractRolling, isRollingWithSessionKey, isConnected, balance, betAmount, contractRoll, hasSessionKey, isSessionKeyAuthorized, rollWithSessionKey, winAnimationLockout, manualDisplayBalance]);
+  }, [isRolling, isContractRolling, isRollingWithSessionKey, isConnected, balance, betAmount, contractRoll, hasSessionKey, isSessionKeyAuthorized, rollWithSessionKey, winAnimationLockout, manualDisplayBalance, refetchBalance]);
 
   return (
     <main className="h-[100dvh] flex flex-col overflow-hidden relative">
