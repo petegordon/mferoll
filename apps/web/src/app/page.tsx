@@ -273,11 +273,17 @@ export default function Home() {
               setOptimisticSkim(args.mferSkimmed);
             }
 
-            // Store playerBalance for WIN to apply when dice settle (not now)
-            // This prevents the balance from jumping before the animation
-            if (won && args.playerBalance !== undefined) {
-              debugLog.info(`EVENT WIN: storing pendingWinBalance=${(Number(args.playerBalance) / 1e6).toFixed(2)}`);
-              pendingWinBalanceRef.current = args.playerBalance;
+            // Update balance from event
+            if (args.playerBalance !== undefined) {
+              if (won) {
+                // For WIN: store to apply when dice settle (for animation timing)
+                debugLog.info(`EVENT WIN: storing pendingWinBalance=${(Number(args.playerBalance) / 1e6).toFixed(2)}`);
+                pendingWinBalanceRef.current = args.playerBalance;
+              } else {
+                // For LOSS: immediately sync with blockchain (no balance animation needed)
+                debugLog.info(`EVENT LOSS: setting manualDisplayBalance=${(Number(args.playerBalance) / 1e6).toFixed(2)}`);
+                setManualDisplayBalance(args.playerBalance);
+              }
             }
 
             // Inject target faces into ongoing animation - D6 will transition from shake to throw
