@@ -217,6 +217,7 @@ export default function Home() {
 
   // Poll for RollSettled events when awaiting result
   const lastCheckedBlockRef = useRef<bigint>(BigInt(0));
+  const rollStartBlockRef = useRef<bigint>(BigInt(0));
 
   useEffect(() => {
     if (!awaitingBlockchainResult || !publicClient || !address) {
@@ -225,12 +226,23 @@ export default function Home() {
 
     debugLog.debug('Starting RollSettled event polling...');
 
+    // Record the starting block for this roll (first poll will set it)
+    const initializePolling = async () => {
+      if (rollStartBlockRef.current === BigInt(0)) {
+        const currentBlock = await publicClient.getBlockNumber();
+        // Start from current block - events for THIS roll will be in future blocks
+        rollStartBlockRef.current = currentBlock;
+        lastCheckedBlockRef.current = currentBlock;
+        debugLog.debug(`Roll started at block ${currentBlock}`);
+      }
+    };
+
     const pollForEvents = async () => {
       try {
+        await initializePolling();
         const currentBlock = await publicClient.getBlockNumber();
-        const fromBlock = lastCheckedBlockRef.current > BigInt(0)
-          ? lastCheckedBlockRef.current
-          : currentBlock - BigInt(10);
+        // Only look at blocks from when THIS roll started
+        const fromBlock = lastCheckedBlockRef.current;
 
         debugLog.debug(`Polling blocks ${fromBlock} to ${currentBlock}`);
 
@@ -291,6 +303,8 @@ export default function Home() {
             setTargetFaces({ die1, die2 });
             setDiceResult({ die1, die2, won });
             setAwaitingBlockchainResult(false);
+            // Reset roll start block for next roll
+            rollStartBlockRef.current = BigInt(0);
             // Keep isRolling true - let animation settle naturally
             // Win/loss animations will trigger in handleDiceSettled
           }
