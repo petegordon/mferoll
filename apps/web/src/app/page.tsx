@@ -93,6 +93,15 @@ export default function Home() {
   const [manualDisplayBalance, setManualDisplayBalance] = useState<bigint | null>(null);
   // Store playerBalance from event to apply when dice settle (not when event arrives)
   const pendingWinBalanceRef = useRef<bigint | null>(null);
+
+  // Debug: log when manualDisplayBalance changes
+  useEffect(() => {
+    if (manualDisplayBalance !== null) {
+      debugLog.debug(`manualDisplayBalance changed to: ${(Number(manualDisplayBalance) / 1e6).toFixed(2)}`);
+    } else {
+      debugLog.debug(`manualDisplayBalance changed to: null (will use polling)`);
+    }
+  }, [manualDisplayBalance]);
   const isRollingRef = useRef(false);
   const rollStartTimeRef = useRef(0);
 
@@ -145,6 +154,13 @@ export default function Home() {
     sessionKeyClient: hasValidSessionKey ? sessionKeyClient : undefined,
   });
 
+  // Debug: log when polled balance changes
+  useEffect(() => {
+    if (balance !== undefined) {
+      debugLog.debug(`POLLED balance: ${(Number(balance) / 1e6).toFixed(2)}`);
+    }
+  }, [balance]);
+
   // Determine if user has deposited (has play history)
   const hasDeposited = useMemo(() => {
     if (!playerStats) return false;
@@ -156,9 +172,13 @@ export default function Home() {
   // Only updates on: roll start (deduct), roll settle win (from event), deposit, withdraw
   const displayBalance = useMemo(() => {
     if (manualDisplayBalance !== null) {
-      return (Number(manualDisplayBalance) / 1e6).toFixed(2);
+      const val = (Number(manualDisplayBalance) / 1e6).toFixed(2);
+      debugLog.debug(`displayBalance: using manual=${val}`);
+      return val;
     }
-    return Number(balanceFormatted).toFixed(2);
+    const val = Number(balanceFormatted).toFixed(2);
+    debugLog.debug(`displayBalance: using polled=${val}`);
+    return val;
   }, [manualDisplayBalance, balanceFormatted]);
 
   // Onboarding state
@@ -256,6 +276,7 @@ export default function Home() {
             // Store playerBalance for WIN to apply when dice settle (not now)
             // This prevents the balance from jumping before the animation
             if (won && args.playerBalance !== undefined) {
+              debugLog.info(`EVENT WIN: storing pendingWinBalance=${(Number(args.playerBalance) / 1e6).toFixed(2)}`);
               pendingWinBalanceRef.current = args.playerBalance;
             }
 
@@ -400,7 +421,9 @@ export default function Home() {
       if (betAmount) {
         const currentDisplayBalance = manualDisplayBalance !== null ? manualDisplayBalance : balance;
         if (currentDisplayBalance) {
-          setManualDisplayBalance(currentDisplayBalance - betAmount);
+          const newBalance = currentDisplayBalance - betAmount;
+          debugLog.info(`ROLL START: ${(Number(currentDisplayBalance) / 1e6).toFixed(2)} - ${(Number(betAmount) / 1e6).toFixed(2)} = ${(Number(newBalance) / 1e6).toFixed(2)}`);
+          setManualDisplayBalance(newBalance);
         }
       }
     } else {
@@ -431,8 +454,11 @@ export default function Home() {
         setWinAnimationLockout(true);
         // Apply the pending win balance NOW (when animation starts)
         if (pendingWinBalanceRef.current !== null) {
+          debugLog.info(`DICE SETTLE WIN: applying pendingWinBalance=${(Number(pendingWinBalanceRef.current) / 1e6).toFixed(2)}`);
           setManualDisplayBalance(pendingWinBalanceRef.current);
           pendingWinBalanceRef.current = null;
+        } else {
+          debugLog.warn(`DICE SETTLE WIN: pendingWinBalance is null!`);
         }
         setGameBalanceAnimating(true);
         // After Game Balance animation (800ms), trigger meme coin animations
@@ -515,7 +541,9 @@ export default function Home() {
       if (betAmount) {
         const currentDisplayBalance = manualDisplayBalance !== null ? manualDisplayBalance : balance;
         if (currentDisplayBalance) {
-          setManualDisplayBalance(currentDisplayBalance - betAmount);
+          const newBalance = currentDisplayBalance - betAmount;
+          debugLog.info(`ROLL START: ${(Number(currentDisplayBalance) / 1e6).toFixed(2)} - ${(Number(betAmount) / 1e6).toFixed(2)} = ${(Number(newBalance) / 1e6).toFixed(2)}`);
+          setManualDisplayBalance(newBalance);
         }
       }
     } else {
@@ -811,7 +839,10 @@ export default function Home() {
                     clearSessionKey,
                   }}
                   onDepositComplete={() => setMenuOpen(false)}
-                  onBalanceChange={() => setManualDisplayBalance(null)}
+                  onBalanceChange={() => {
+                    debugLog.warn('MENU: onBalanceChange called - resetting to polling');
+                    setManualDisplayBalance(null);
+                  }}
                 />
               </div>
             </div>
