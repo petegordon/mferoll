@@ -54,6 +54,7 @@ interface SevenElevenGameProps {
   sessionKey: SessionKeyState;
   onDepositComplete?: () => void;
   onBalanceChange?: () => void;
+  displayBalance?: string;  // Pass from parent to keep header and menu in sync
 }
 
 export function SevenElevenGame({
@@ -61,6 +62,7 @@ export function SevenElevenGame({
   sessionKey,
   onDepositComplete,
   onBalanceChange,
+  displayBalance: parentDisplayBalance,
 }: SevenElevenGameProps) {
   const { isConnected } = useAccount();
   const depositTokens = useDepositTokens();
@@ -103,6 +105,10 @@ export function SevenElevenGame({
     isAuthorizing,
     error,
   } = useSevenEleven(currentToken);
+
+  // Use parent's display balance if provided (keeps header and menu in sync)
+  // Otherwise fall back to hook's polled balance
+  const displayBalance = parentDisplayBalance ?? formatTokenAmount(balanceFormatted);
 
   const {
     hasValidSessionKey,
@@ -327,7 +333,7 @@ export function SevenElevenGame({
             Game Balance
           </span>
           <span className={`font-bold flex items-center gap-1.5 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-            {formatTokenAmount(balanceFormatted)}
+            {displayBalance}
             <img src={currentToken.icon} alt={currentToken.symbol} className="w-5 h-5 rounded-full" />
           </span>
         </div>
@@ -771,7 +777,7 @@ export function SevenElevenGame({
                   <img src={currentToken.icon} alt={currentToken.symbol} className="w-3.5 h-3.5 rounded-full" />
                 </div>
                 <div className="flex items-center gap-1">
-                  Game Balance: {formatTokenAmount(balanceFormatted)}
+                  Game Balance: {displayBalance}
                   <img src={currentToken.icon} alt={currentToken.symbol} className="w-3.5 h-3.5 rounded-full" />
                 </div>
               </div>

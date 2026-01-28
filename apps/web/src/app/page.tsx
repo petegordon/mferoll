@@ -849,6 +849,7 @@ export default function Home() {
                     debugLog.warn('MENU: onBalanceChange called - resetting to polling');
                     setManualDisplayBalance(null);
                   }}
+                  displayBalance={displayBalance}
                 />
               </div>
             </div>
